@@ -55,6 +55,10 @@ _NDVI_PRODUCT_ID = "NDVI-WEEKLY"
 _SMAP_PRODUCT_ID = "SMAP-L4-SM"          # swap if the service uses a different ID
 _DEFAULT_BASELINE_YEARS = list(range(2016, 2022))
 
+# Anomaly detection thresholds (deviation from 5-year baseline mean)
+ANOMALY_WARNING_PCT: float = -15.0   # ≤ this → "warning"
+ANOMALY_CRITICAL_PCT: float = -30.0  # ≤ this → "critical"
+
 # ---------------------------------------------------------------------------
 # Louisiana defaults  (swap bbox to scale to any other region)
 # ---------------------------------------------------------------------------
@@ -343,9 +347,39 @@ def _extract_phenometrics(ndvi_series: np.ndarray) -> Optional[dict]:
             "PeakNDVI": peak_ndvi,
             "Amplitude": float(amp),
             "Base": float(base),
+            # Raw curve parameters stored so the full fitted curve can be
+            # reconstructed at any DOY without refitting.
+            "_popt": [float(base), float(amp), float(sos),
+                      float(rise_rate), float(eos), float(fall_rate)],
         }
     except Exception:
         return None
+
+
+def _metrics_to_curve(metrics: dict) -> np.ndarray:
+    """Reconstruct the fitted double-logistic as a 365-element array (index = DOY-1)."""
+    return _double_logistic(np.arange(1, 366), *metrics["_popt"])
+
+
+def _mean_curve(metrics_list: list) -> Optional[np.ndarray]:
+    """
+    Average fitted curves across a list of phenometric dicts.
+
+    Each year/point gets equal weight.  Averaging the 365-point curve
+    arrays (rather than the 6 nonlinear parameters) produces a shape-
+    preserving mean that handles inter-annual variation correctly.
+    """
+    curves = [_metrics_to_curve(m) for m in metrics_list if m is not None and "_popt" in m]
+    return np.mean(curves, axis=0) if curves else None
+
+
+def _mean_scalar_metrics(metrics_list: list) -> Optional[dict]:
+    """Average the scalar phenometrics (SOS, POS, EOS, GSL, PeakNDVI, Amplitude, Base)."""
+    valid = [m for m in metrics_list if m is not None]
+    if not valid:
+        return None
+    keys = ["SOS", "POS", "EOS", "GSL", "PeakNDVI", "Amplitude", "Base"]
+    return {k: float(np.mean([m[k] for m in valid])) for k in keys}
 
 
 # ---------------------------------------------------------------------------
@@ -625,4 +659,232 @@ def get_ndvi_observation(
         "deviation_pct": round(deviation_pct, 2) if deviation_pct is not None else None,
         "status": status,
         "source": source,
+    }
+
+
+def detect_ndvi_anomaly(
+    region_bbox: Tuple[float, float, float, float],
+    date: Union[str, datetime.date],
+    region_id: str = LOUISIANA_REGION_ID,
+    baseline_years: Optional[list] = None,
+    n_samples: int = 16,
+    sample_delay: float = 0.3,
+) -> dict:
+    """
+    Compare current-year NDVI phenology against a 5-year baseline using
+    double-logistic curve parameters, and flag anomalies at two severity levels.
+
+    Deviation signals
+    -----------------
+    Two independent signals are computed from the fitted curves:
+
+    1. **DOY-curve deviation** — evaluates both the current and baseline
+       fitted curves at today's day-of-year.  Captures in-season stress even
+       before peak NDVI is reached.
+
+    2. **PeakNDVI deviation** — compares the projected seasonal maximum.
+       Reliable once enough of the season has been observed (≳ 20 weeks).
+
+    The alert is raised on whichever signal is more negative (worst case).
+
+    Thresholds
+    ----------
+    - ``deviation_pct ≤ -15 %`` → **warning**
+    - ``deviation_pct ≤ -30 %`` → **critical**
+    - otherwise                 → **normal**
+
+    Baseline
+    --------
+    Defaults to the 5 calendar years immediately preceding the observation year
+    (e.g. observation 2024 → baseline [2019, 2020, 2021, 2022, 2023]).
+    Pass ``baseline_years`` to override.
+
+    Confidence
+    ----------
+    Reported as ``"high" / "medium" / "low"`` based on the fraction of sample
+    points that produced a successful double-logistic fit for the current year.
+
+    Parameters
+    ----------
+    region_bbox    : (min_lon, min_lat, max_lon, max_lat) in WGS84
+    date           : "YYYY-MM-DD" string or datetime.date
+    region_id      : label included verbatim in output
+    baseline_years : list of int years; default = 5 years prior to observation
+    n_samples      : grid points sampled within bbox (WPS calls = n × (1 + n_baseline_years))
+    sample_delay   : seconds between WPS requests
+
+    Returns
+    -------
+    dict
+        region_id, date, doy, year, baseline_years,
+        alert               ("normal" | "warning" | "critical" | "data_unavailable"),
+        thresholds          {"warning_pct": -15.0, "critical_pct": -30.0},
+        primary_deviation_pct   (the signal that triggered the alert),
+        primary_signal          ("doy_curve" | "peak_ndvi" | null),
+        doy_ndvi_current,   doy_ndvi_baseline,   doy_ndvi_deviation_pct,
+        peak_ndvi_current,  peak_ndvi_baseline,  peak_ndvi_deviation_pct,
+        amplitude_deviation_pct,
+        gsl_deviation_pct,
+        sos_current,  sos_baseline,
+        eos_current,  eos_baseline,
+        n_current_profiles, n_baseline_profiles,
+        confidence          ("high" | "medium" | "low")
+    """
+    d = _parse_date(date)
+    year = d.year
+    doy = d.timetuple().tm_yday
+
+    # Default: the 5 years immediately before the observation year
+    if baseline_years is None:
+        baseline_years = [year - i for i in range(5, 0, -1)]
+
+    points = _sample_grid_points(region_bbox, n_samples)
+
+    def _fetch_and_fit(yr: int) -> list:
+        """Fetch NDVI profiles for all sample points in `yr`, return fitted metrics."""
+        fitted = []
+        for lon, lat in points:
+            raw = _wps_fetch_yearly_profile(_NDVI_PRODUCT_ID, lon, lat, yr)
+            if raw is not None and len(raw) >= 4:
+                profile = raw / 255.0 if raw.max() > 1.5 else raw
+                m = _extract_phenometrics(profile)
+                if m is not None:
+                    fitted.append(m)
+            time.sleep(sample_delay)
+        return fitted
+
+    # ---- Current year ----
+    current_fits = _fetch_and_fit(year)
+
+    # ---- Baseline years ----
+    # Compute a per-year mean curve, then average those curves so each year
+    # has equal weight regardless of how many points had successful fits.
+    baseline_year_curves: list[np.ndarray] = []
+    baseline_year_scalars: list[dict] = []
+    n_baseline_profiles = 0
+
+    for yr in baseline_years:
+        yr_fits = _fetch_and_fit(yr)
+        n_baseline_profiles += len(yr_fits)
+        if not yr_fits:
+            continue
+        curve = _mean_curve(yr_fits)
+        scalars = _mean_scalar_metrics(yr_fits)
+        if curve is not None:
+            baseline_year_curves.append(curve)
+        if scalars is not None:
+            baseline_year_scalars.append(scalars)
+
+    # ---- Unavailable guard ----
+    if not current_fits or not baseline_year_curves:
+        return {
+            "region_id": region_id,
+            "date": str(d),
+            "doy": doy,
+            "year": year,
+            "baseline_years": baseline_years,
+            "alert": "data_unavailable",
+            "thresholds": {"warning_pct": ANOMALY_WARNING_PCT, "critical_pct": ANOMALY_CRITICAL_PCT},
+            "primary_deviation_pct": None,
+            "primary_signal": None,
+            "doy_ndvi_current": None, "doy_ndvi_baseline": None, "doy_ndvi_deviation_pct": None,
+            "peak_ndvi_current": None, "peak_ndvi_baseline": None, "peak_ndvi_deviation_pct": None,
+            "amplitude_deviation_pct": None, "gsl_deviation_pct": None,
+            "sos_current": None, "sos_baseline": None,
+            "eos_current": None, "eos_baseline": None,
+            "n_current_profiles": len(current_fits),
+            "n_baseline_profiles": n_baseline_profiles,
+            "confidence": "low",
+        }
+
+    # ---- Mean curves ----
+    current_curve = _mean_curve(current_fits)           # shape (365,) or None
+    baseline_curve = np.mean(baseline_year_curves, axis=0)  # equal-weight year average
+
+    current_scalars = _mean_scalar_metrics(current_fits)
+    baseline_scalars = _mean_scalar_metrics(baseline_year_scalars) if baseline_year_scalars else None
+
+    # ---- DOY-curve deviation ----
+    doy_current = doy_baseline = doy_dev = None
+    if current_curve is not None:
+        doy_current = float(current_curve[doy - 1])
+        doy_baseline = float(baseline_curve[doy - 1])
+        if doy_baseline > 0:
+            doy_dev = (doy_current - doy_baseline) / doy_baseline * 100.0
+
+    # ---- PeakNDVI deviation ----
+    peak_current = peak_baseline = peak_dev = None
+    amp_dev = gsl_dev = None
+    sos_current = sos_baseline = eos_current = eos_baseline = None
+
+    if current_scalars and baseline_scalars:
+        peak_current = current_scalars["PeakNDVI"]
+        peak_baseline = baseline_scalars["PeakNDVI"]
+        if peak_baseline > 0:
+            peak_dev = (peak_current - peak_baseline) / peak_baseline * 100.0
+
+        if baseline_scalars["Amplitude"] > 0:
+            amp_dev = (current_scalars["Amplitude"] - baseline_scalars["Amplitude"]) / baseline_scalars["Amplitude"] * 100.0
+        if baseline_scalars["GSL"] > 0:
+            gsl_dev = (current_scalars["GSL"] - baseline_scalars["GSL"]) / baseline_scalars["GSL"] * 100.0
+
+        sos_current = round(current_scalars["SOS"], 1)
+        sos_baseline = round(baseline_scalars["SOS"], 1)
+        eos_current = round(current_scalars["EOS"], 1)
+        eos_baseline = round(baseline_scalars["EOS"], 1)
+
+    # ---- Primary signal: whichever deviation is more negative ----
+    candidates: list[tuple[float, str]] = []
+    if doy_dev is not None:
+        candidates.append((doy_dev, "doy_curve"))
+    if peak_dev is not None:
+        candidates.append((peak_dev, "peak_ndvi"))
+
+    if candidates:
+        primary_dev, primary_signal = min(candidates, key=lambda t: t[0])
+    else:
+        primary_dev, primary_signal = None, None
+
+    # ---- Alert level ----
+    if primary_dev is None:
+        alert = "data_unavailable"
+    elif primary_dev <= ANOMALY_CRITICAL_PCT:
+        alert = "critical"
+    elif primary_dev <= ANOMALY_WARNING_PCT:
+        alert = "warning"
+    else:
+        alert = "normal"
+
+    # ---- Confidence ----
+    fit_rate = len(current_fits) / max(len(points), 1)
+    confidence = "high" if fit_rate >= 0.6 else ("medium" if fit_rate >= 0.3 else "low")
+
+    def _r(v, ndigits=4):
+        return round(v, ndigits) if v is not None else None
+
+    return {
+        "region_id": region_id,
+        "date": str(d),
+        "doy": doy,
+        "year": year,
+        "baseline_years": baseline_years,
+        "alert": alert,
+        "thresholds": {"warning_pct": ANOMALY_WARNING_PCT, "critical_pct": ANOMALY_CRITICAL_PCT},
+        "primary_deviation_pct": _r(primary_dev, 2),
+        "primary_signal": primary_signal,
+        "doy_ndvi_current": _r(doy_current),
+        "doy_ndvi_baseline": _r(doy_baseline),
+        "doy_ndvi_deviation_pct": _r(doy_dev, 2),
+        "peak_ndvi_current": _r(peak_current),
+        "peak_ndvi_baseline": _r(peak_baseline),
+        "peak_ndvi_deviation_pct": _r(peak_dev, 2),
+        "amplitude_deviation_pct": _r(amp_dev, 2),
+        "gsl_deviation_pct": _r(gsl_dev, 2),
+        "sos_current": sos_current,
+        "sos_baseline": sos_baseline,
+        "eos_current": eos_current,
+        "eos_baseline": eos_baseline,
+        "n_current_profiles": len(current_fits),
+        "n_baseline_profiles": n_baseline_profiles,
+        "confidence": confidence,
     }
