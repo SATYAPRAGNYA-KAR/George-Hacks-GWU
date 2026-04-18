@@ -26,6 +26,7 @@
       ],
       "primary_route": "LA-24",
       "backup_route": "US-90",
+      "source_counties": ["Terrebonne"],
       "waypoints": [
         {"state": "LA", "county": "Terrebonne"},
         {"state": "LA", "county": "Lafourche"}
