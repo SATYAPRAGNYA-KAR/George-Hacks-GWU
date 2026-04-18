@@ -62,7 +62,8 @@ class _RiskScore:
 
 _risk_engine_stub.RiskScore = _RiskScore
 _risk_engine_stub.ComponentScores = _ComponentScores
-sys.modules.setdefault("risk_engine", _risk_engine_stub)
+with patch.dict("sys.modules", {"risk_engine": _risk_engine_stub}):
+    import alert_logic
 
 import alert_logic  # noqa: E402 — imported after stub registration
 from alert_logic import (

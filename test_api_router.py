@@ -25,8 +25,7 @@ def _make_stub(name: str, **attrs) -> types.ModuleType:
     mod = types.ModuleType(name)
     for k, v in attrs.items():
         setattr(mod, k, v)
-    sys.modules.setdefault(name, mod)
-    return mod
+    return mod   # ✅ NO sys.modules modification here
 
 # Minimal dataclasses matching what the routers use
 from dataclasses import dataclass, field, asdict
