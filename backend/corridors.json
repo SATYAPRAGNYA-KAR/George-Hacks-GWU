@@ -1,0 +1,108 @@
+{
+  "_comment": "Major US freight corridors for crop logistics. Each corridor is an ordered list of (state, county) waypoints. County names match NWS areaDesc format (without ', STATE' suffix) and FEMA designatedArea without the '(County)' suffix. We normalize on comparison so either source resolves.",
+  "corridors": [
+    {
+      "id": "I-5",
+      "name": "Interstate 5",
+      "description": "West Coast corridor: WA border to Mexico. Key for CA produce.",
+      "crop_types": ["produce", "nuts", "dairy"],
+      "waypoints": [
+        {"state": "CA", "county": "Shasta"},
+        {"state": "CA", "county": "Tehama"},
+        {"state": "CA", "county": "Glenn"},
+        {"state": "CA", "county": "Colusa"},
+        {"state": "CA", "county": "Sacramento"},
+        {"state": "CA", "county": "San Joaquin"},
+        {"state": "CA", "county": "Stanislaus"},
+        {"state": "CA", "county": "Merced"},
+        {"state": "CA", "county": "Fresno"},
+        {"state": "CA", "county": "Kings"},
+        {"state": "CA", "county": "Kern"},
+        {"state": "CA", "county": "Los Angeles"},
+        {"state": "CA", "county": "San Diego"}
+      ]
+    },
+    {
+      "id": "I-10",
+      "name": "Interstate 10",
+      "description": "Southern transcontinental: CA to FL. Key for citrus, winter produce.",
+      "crop_types": ["citrus", "cotton", "produce"],
+      "waypoints": [
+        {"state": "CA", "county": "Los Angeles"},
+        {"state": "CA", "county": "San Bernardino"},
+        {"state": "CA", "county": "Riverside"},
+        {"state": "AZ", "county": "Maricopa"},
+        {"state": "AZ", "county": "Pinal"},
+        {"state": "AZ", "county": "Pima"},
+        {"state": "AZ", "county": "Cochise"},
+        {"state": "NM", "county": "Luna"},
+        {"state": "NM", "county": "Dona Ana"},
+        {"state": "TX", "county": "El Paso"},
+        {"state": "TX", "county": "Harris"},
+        {"state": "LA", "county": "Orleans"},
+        {"state": "MS", "county": "Harrison"},
+        {"state": "AL", "county": "Mobile"},
+        {"state": "FL", "county": "Escambia"}
+      ]
+    },
+    {
+      "id": "I-80",
+      "name": "Interstate 80",
+      "description": "Northern transcontinental: SF to NYC. Primary east-west Iowa corn artery.",
+      "crop_types": ["corn", "soybeans", "wheat"],
+      "waypoints": [
+        {"state": "CA", "county": "San Francisco"},
+        {"state": "NV", "county": "Washoe"},
+        {"state": "UT", "county": "Salt Lake"},
+        {"state": "WY", "county": "Laramie"},
+        {"state": "NE", "county": "Lincoln"},
+        {"state": "NE", "county": "Douglas"},
+        {"state": "IA", "county": "Pottawattamie"},
+        {"state": "IA", "county": "Cass"},
+        {"state": "IA", "county": "Adair"},
+        {"state": "IA", "county": "Madison"},
+        {"state": "IA", "county": "Dallas"},
+        {"state": "IA", "county": "Polk"},
+        {"state": "IA", "county": "Jasper"},
+        {"state": "IA", "county": "Poweshiek"},
+        {"state": "IA", "county": "Iowa"},
+        {"state": "IA", "county": "Johnson"},
+        {"state": "IA", "county": "Cedar"},
+        {"state": "IA", "county": "Scott"},
+        {"state": "IL", "county": "Cook"},
+        {"state": "IN", "county": "Lake"},
+        {"state": "OH", "county": "Cuyahoga"},
+        {"state": "PA", "county": "Allegheny"}
+      ]
+    },
+    {
+      "id": "I-35",
+      "name": "Interstate 35",
+      "description": "North-south Midwest spine: Duluth to Laredo. Primary Iowa soy corridor.",
+      "crop_types": ["corn", "soybeans", "livestock"],
+      "waypoints": [
+        {"state": "MN", "county": "St. Louis"},
+        {"state": "MN", "county": "Hennepin"},
+        {"state": "IA", "county": "Worth"},
+        {"state": "IA", "county": "Cerro Gordo"},
+        {"state": "IA", "county": "Franklin"},
+        {"state": "IA", "county": "Hardin"},
+        {"state": "IA", "county": "Hamilton"},
+        {"state": "IA", "county": "Story"},
+        {"state": "IA", "county": "Polk"},
+        {"state": "IA", "county": "Warren"},
+        {"state": "IA", "county": "Clarke"},
+        {"state": "IA", "county": "Decatur"},
+        {"state": "MO", "county": "Clay"},
+        {"state": "MO", "county": "Jackson"},
+        {"state": "KS", "county": "Wyandotte"},
+        {"state": "OK", "county": "Oklahoma"},
+        {"state": "TX", "county": "Cooke"},
+        {"state": "TX", "county": "Dallas"},
+        {"state": "TX", "county": "Travis"},
+        {"state": "TX", "county": "Bexar"},
+        {"state": "TX", "county": "Webb"}
+      ]
+    }
+  ]
+}
