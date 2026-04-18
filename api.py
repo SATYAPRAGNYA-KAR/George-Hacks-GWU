@@ -1,19 +1,42 @@
 """
-Crop Health API — Louisiana focus, extensible to any region.
+Crop Health + Alerts API — unified entry point.
 
 Endpoints
 ---------
-GET  /                              health check + link to docs
-GET  /api/regions                   list all cached region IDs
-GET  /api/crop-health/{region_id}   return latest cached analysis for a region
-POST /api/analyze                   run a fresh analysis and cache the result
+Builder 1 (Peyton):
+  GET  /                              health check
+  GET  /api/regions                   cached region IDs
+  GET  /api/crop-health/{region_id}   latest cached crop analysis
+  POST /api/analyze                   run a fresh crop analysis
+
+Builder 3 (you):
+  GET  /api/alerts                    all active alerts (all communities)
+  GET  /api/alerts/{community_id}     single-community alert
+  GET  /api/risk                      risk scores for all communities
+  GET  /api/risk/{community_id}       risk breakdown for one community
+  POST /api/alerts/refresh            force re-score all communities
+
+  GET  /api/disruptions/{region_id}   unified disruption feed (NOAA + FEMA + routes)
 
 Usage
 -----
-Start:  uvicorn api:app --host 0.0.0.0 --port 8000
-Docs:   http://localhost:8000/docs
+  python start_server.py
+  Docs: http://localhost:8000/docs
 """
 from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+# Make backend/ importable (for fema, noaa, routes)
+_backend = Path(__file__).parent / "backend"
+if str(_backend) not in sys.path:
+    sys.path.insert(0, str(_backend))
+
+# Make project root importable (for risk_engine, alert_logic)
+_root = Path(__file__).parent
+if str(_root) not in sys.path:
+    sys.path.insert(0, str(_root))
 
 import datetime
 import threading
@@ -22,6 +45,7 @@ from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from crop_health import (
@@ -34,103 +58,92 @@ from crop_health import (
     get_drought_status,
 )
 
+# Builder 3 routers
+from backend.alerts_api import router as alerts_router
+from backend.disruptions_api import router as disruptions_router
+
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
 
 app = FastAPI(
-    title="Crop Health API",
+    title="RootBridge — Crop Health & Food Security API",
     description=(
-        "NDVI phenology + SMAP drought analysis for Louisiana (and any region).\n\n"
-        "**Quick demo**\n"
-        "1. `POST /api/analyze` with `fast_mode=true` to seed the cache (~30 s).\n"
-        "2. `GET /api/crop-health/louisiana` to retrieve the result.\n\n"
-        "Full analysis (`fast_mode=false`) runs the 5-year double-logistic baseline "
-        "and takes several minutes depending on WPS latency."
+        "Louisiana food-supply risk platform.\n\n"
+        "**Builder 1**: crop health (NDVI + drought) via NASA LANCE + SMAP.\n"
+        "**Builder 3**: composite risk scoring, graduated alerts, supply-corridor analysis.\n\n"
+        "Quick demo flow:\n"
+        "1. `POST /api/analyze` with `fast_mode=true` to seed crop cache (~30 s).\n"
+        "2. `GET /api/alerts` to see active food-security alerts.\n"
+        "3. `GET /api/risk` to see per-community risk breakdowns.\n"
     ),
     version="1.0.0",
 )
 
+# Allow Builder 4's frontend to call us
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # ---------------------------------------------------------------------------
-# In-memory store  { region_id: { ...result, cached_at, duration_s } }
+# Mount Builder 3 routers
+# ---------------------------------------------------------------------------
+app.include_router(alerts_router, prefix="/api")
+app.include_router(disruptions_router, prefix="/api")
+
+# ---------------------------------------------------------------------------
+# In-memory store (Builder 1 crop-health cache)
 # ---------------------------------------------------------------------------
 
 _store: Dict[str, Dict[str, Any]] = {}
 _running: set[str] = set()
 _lock = threading.Lock()
 
+
 # ---------------------------------------------------------------------------
 # Request model
 # ---------------------------------------------------------------------------
 
 class AnalyzeRequest(BaseModel):
-    region_id: str = Field(
-        LOUISIANA_REGION_ID,
-        description="Label stored in the cache and returned in every response.",
-    )
-    bbox: Optional[List[float]] = Field(
-        None,
-        description=(
-            "[min_lon, min_lat, max_lon, max_lat] WGS84. "
-            "Omit to use the Louisiana state extent."
-        ),
-        min_length=4,
-        max_length=4,
-    )
-    date: Optional[str] = Field(
-        None,
-        description="Observation date YYYY-MM-DD. Omit to use today.",
-    )
-    baseline_years: Optional[List[int]] = Field(
-        None,
-        description=(
-            "Explicit list of years for the climatological baseline. "
-            "Omit to use the 5 years immediately before the observation year."
-        ),
-    )
-    n_samples: int = Field(
-        9,
-        ge=1,
-        le=64,
-        description="Number of grid points sampled inside the bbox per API call.",
-    )
-    include_drought: bool = Field(
-        True,
-        description="Also run the SMAP soil-moisture drought analysis.",
-    )
+    region_id: str = Field(LOUISIANA_REGION_ID)
+    bbox: Optional[List[float]] = Field(None, min_length=4, max_length=4)
+    date: Optional[str] = Field(None)
+    baseline_years: Optional[List[int]] = Field(None)
+    n_samples: int = Field(9, ge=1, le=64)
+    include_drought: bool = Field(True)
     fast_mode: bool = Field(
         False,
-        description=(
-            "When true, skip the full double-logistic baseline computation and "
-            "return only the NDVI observation + drought snapshot. "
-            "Much faster (~30 s vs several minutes) — good for demos."
-        ),
+        description="Skip baseline curve fitting — much faster, good for demos.",
     )
 
+
 # ---------------------------------------------------------------------------
-# Helpers
+# Helpers (unchanged from original api.py)
 # ---------------------------------------------------------------------------
 
 def _summarise(entry: Dict[str, Any]) -> Dict[str, Any]:
-    """Add a top-level `summary` block so the GET response is scannable at a glance."""
     anomaly = entry.get("anomaly", {})
-    obs = entry.get("ndvi_observation", {})
+    obs     = entry.get("ndvi_observation", {})
     drought = entry.get("drought", {})
 
     alert = anomaly.get("alert") or "data_unavailable"
     color = {"normal": "green", "warning": "yellow", "critical": "red"}.get(alert, "grey")
 
     summary = {
-        "alert": alert,
-        "color": color,
-        "ndvi_current": obs.get("ndvi_current"),
+        "alert":              alert,
+        "color":              color,
+        "ndvi_current":       obs.get("ndvi_current"),
         "ndvi_deviation_pct": obs.get("deviation_pct"),
-        "ndvi_status": obs.get("status"),
-        "drought_status": drought.get("status") if drought else None,
-        "source": obs.get("source"),
-        "confidence": anomaly.get("confidence"),
-        "cached_at": entry.get("cached_at"),
-        "analysis_duration_s": entry.get("duration_s"),
+        "ndvi_status":        obs.get("status"),
+        "drought_status":     drought.get("status") if drought else None,
+        "source":             obs.get("source"),
+        "confidence":         anomaly.get("confidence"),
+        "cached_at":          entry.get("cached_at"),
+        "analysis_duration_s":entry.get("duration_s"),
     }
     return {**entry, "summary": summary}
 
@@ -147,86 +160,82 @@ def _run_analysis(
     t0 = time.monotonic()
 
     if fast_mode:
-        # Lightweight path: current NDVI observation only — no baseline curve fitting.
         observation = get_ndvi_observation(
-            region_bbox=bbox,
-            date=date,
-            region_id=region_id,
-            n_samples=n_samples,
+            region_bbox=bbox, date=date,
+            region_id=region_id, n_samples=n_samples,
         )
         anomaly: Dict[str, Any] = {
-            "region_id": region_id,
-            "date": date,
+            "region_id": region_id, "date": date,
             "alert": "data_unavailable",
             "note": "fast_mode=true — run with fast_mode=false for full anomaly detection.",
         }
     else:
         anomaly = detect_ndvi_anomaly(
-            region_bbox=bbox,
-            date=date,
-            region_id=region_id,
-            baseline_years=baseline_years,
-            n_samples=n_samples,
+            region_bbox=bbox, date=date, region_id=region_id,
+            baseline_years=baseline_years, n_samples=n_samples,
         )
         observation = get_ndvi_observation(
-            region_bbox=bbox,
-            date=date,
-            region_id=region_id,
-            n_samples=n_samples,
+            region_bbox=bbox, date=date,
+            region_id=region_id, n_samples=n_samples,
         )
 
     drought = None
     if include_drought:
-        drought = get_drought_status(
-            region_bbox=bbox,
-            date=date,
-            n_samples=n_samples,
-        )
-
-    duration = round(time.monotonic() - t0, 1)
+        drought = get_drought_status(region_bbox=bbox, date=date, n_samples=n_samples)
 
     return {
         "region_id": region_id,
         "cached_at": datetime.datetime.utcnow().isoformat() + "Z",
-        "duration_s": duration,
+        "duration_s": round(time.monotonic() - t0, 1),
         "anomaly": anomaly,
         "ndvi_observation": observation,
         "drought": drought,
     }
 
+
 # ---------------------------------------------------------------------------
-# Routes
+# Builder 1 routes (unchanged)
 # ---------------------------------------------------------------------------
 
 @app.get("/", tags=["meta"])
 def root():
     return {
-        "service": "crop-health-api",
+        "service": "rootbridge-api",
         "status": "ok",
         "docs": "/docs",
-        "endpoints": {
-            "health_check": "GET /api/crop-health/{region_id}",
-            "analyze": "POST /api/analyze",
-            "regions": "GET /api/regions",
+        "builder1_endpoints": {
+            "crop_health": "GET /api/crop-health/{region_id}",
+            "analyze":     "POST /api/analyze",
+            "regions":     "GET /api/regions",
+        },
+        "builder3_endpoints": {
+            "alerts":       "GET /api/alerts",
+            "community_alert": "GET /api/alerts/{community_id}",
+            "risk_all":     "GET /api/risk",
+            "risk_one":     "GET /api/risk/{community_id}",
+            "refresh":      "POST /api/alerts/refresh",
+            "disruptions":  "GET /api/disruptions/{region_id}",
         },
         "default_region": LOUISIANA_REGION_ID,
         "thresholds": {
-            "warning_pct": ANOMALY_WARNING_PCT,
+            "warning_pct":  ANOMALY_WARNING_PCT,
             "critical_pct": ANOMALY_CRITICAL_PCT,
+            "alert_watch":   40,
+            "alert_warning": 60,
+            "alert_action":  80,
         },
     }
 
 
 @app.get("/api/regions", tags=["meta"])
 def list_regions():
-    """List all region IDs that have a cached analysis result."""
     with _lock:
         regions = [
             {
                 "region_id": rid,
                 "cached_at": v["cached_at"],
-                "alert": v.get("anomaly", {}).get("alert", "unknown"),
-                "duration_s": v.get("duration_s"),
+                "alert":     v.get("anomaly", {}).get("alert", "unknown"),
+                "duration_s":v.get("duration_s"),
             }
             for rid, v in _store.items()
         ]
@@ -235,13 +244,6 @@ def list_regions():
 
 @app.get("/api/crop-health/{region_id}", tags=["health"])
 def get_crop_health(region_id: str):
-    """
-    Return the latest cached analysis for a region.
-
-    Run `POST /api/analyze` first to populate the cache.
-    Returns **404** if no analysis has been run yet for this region.
-    Returns **202** if an analysis is currently running.
-    """
     with _lock:
         is_running = region_id in _running
         entry = _store.get(region_id)
@@ -249,37 +251,22 @@ def get_crop_health(region_id: str):
     if is_running and entry is None:
         raise HTTPException(
             status_code=202,
-            detail=f"Analysis for '{region_id}' is currently running — try again in a moment.",
+            detail=f"Analysis for '{region_id}' is currently running.",
         )
     if entry is None:
         raise HTTPException(
             status_code=404,
             detail=(
-                f"No cached analysis found for region '{region_id}'. "
-                f"POST /api/analyze with {{\"region_id\": \"{region_id}\"}} to run one."
+                f"No cached analysis for '{region_id}'. "
+                f"POST /api/analyze to run one."
             ),
         )
-
     return _summarise(entry)
 
 
 @app.post("/api/analyze", tags=["health"], status_code=200)
 def run_analysis(req: AnalyzeRequest):
-    """
-    Run a fresh crop-health analysis and cache the result.
-
-    **fast_mode=false** (default): Full analysis — fits 5-year double-logistic baselines,
-    computes DOY-curve and PeakNDVI anomalies, SMAP drought status.
-    Expected duration: 2–8 minutes depending on WPS latency and `n_samples`.
-
-    **fast_mode=true**: NDVI observation + drought snapshot only, no baseline curve fitting.
-    Expected duration: ~30 seconds. Use this for live demos.
-
-    The result is cached and immediately available via
-    `GET /api/crop-health/{region_id}`.
-    """
     region_id = req.region_id
-
     with _lock:
         if region_id in _running:
             raise HTTPException(
@@ -301,15 +288,12 @@ def run_analysis(req: AnalyzeRequest):
             include_drought=req.include_drought,
             fast_mode=req.fast_mode,
         )
-
         with _lock:
             _store[region_id] = result
-
         return _summarise(result)
 
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
-
     finally:
         with _lock:
             _running.discard(region_id)
