@@ -1,0 +1,351 @@
+{
+  "_comment": "Static seed data for Builder 3. Each corridor maps a producing region to dependent communities. dependency_weight reflects how much that community relies on this single corridor (0-1). v2 will discover these dynamically.",
+  "corridors": [
+    {
+      "id": "terrebonne-houma",
+      "name": "Terrebonne Basin → Houma Metro",
+      "source_region": "terrebonne",
+      "source_region_id": "louisiana",
+      "source_bbox": [-90.82, 29.10, -90.30, 29.65],
+      "crop_types": ["crawfish", "rice", "sugarcane", "soybeans"],
+      "destination_communities": [
+        {
+          "community_id": "houma-la",
+          "name": "Houma, LA",
+          "population": 33000,
+          "food_insecurity_rate": 0.18,
+          "dependency_weight": 0.85
+        },
+        {
+          "community_id": "dulac-la",
+          "name": "Dulac, LA",
+          "population": 1700,
+          "food_insecurity_rate": 0.34,
+          "dependency_weight": 0.95
+        }
+      ],
+      "primary_route": "LA-24",
+      "backup_route": "US-90",
+      "waypoints": [
+        {"state": "LA", "county": "Terrebonne"},
+        {"state": "LA", "county": "Lafourche"}
+      ]
+    },
+    {
+      "id": "lafourche-thibodaux",
+      "name": "Lafourche Sugarcane Belt → Thibodaux",
+      "source_region": "lafourche",
+      "source_region_id": "louisiana",
+      "source_bbox": [-90.82, 29.50, -90.20, 29.95],
+      "crop_types": ["sugarcane", "soybeans", "corn"],
+      "destination_communities": [
+        {
+          "community_id": "thibodaux-la",
+          "name": "Thibodaux, LA",
+          "population": 14800,
+          "food_insecurity_rate": 0.21,
+          "dependency_weight": 0.70
+        },
+        {
+          "community_id": "raceland-la",
+          "name": "Raceland, LA",
+          "population": 10000,
+          "food_insecurity_rate": 0.26,
+          "dependency_weight": 0.65
+        }
+      ],
+      "primary_route": "LA-308",
+      "backup_route": "US-90",
+      "waypoints": [
+        {"state": "LA", "county": "Lafourche"},
+        {"state": "LA", "county": "St. Mary"}
+      ]
+    },
+    {
+      "id": "stmary-morgan-city",
+      "name": "St. Mary Parish Farms → Morgan City",
+      "source_region": "st-mary",
+      "source_region_id": "louisiana",
+      "source_bbox": [-91.50, 29.50, -90.80, 30.00],
+      "crop_types": ["rice", "soybeans", "crawfish"],
+      "destination_communities": [
+        {
+          "community_id": "morgan-city-la",
+          "name": "Morgan City, LA",
+          "population": 11600,
+          "food_insecurity_rate": 0.23,
+          "dependency_weight": 0.72
+        },
+        {
+          "community_id": "patterson-la",
+          "name": "Patterson, LA",
+          "population": 5600,
+          "food_insecurity_rate": 0.29,
+          "dependency_weight": 0.80
+        }
+      ],
+      "primary_route": "US-90",
+      "backup_route": "LA-182",
+      "waypoints": [
+        {"state": "LA", "county": "St. Mary"},
+        {"state": "LA", "county": "Assumption"}
+      ]
+    },
+    {
+      "id": "assumption-napoleonville",
+      "name": "Assumption Parish Corridor → Napoleonville",
+      "source_region": "assumption",
+      "source_region_id": "louisiana",
+      "source_bbox": [-91.15, 29.70, -90.70, 30.10],
+      "crop_types": ["sugarcane", "soybeans"],
+      "destination_communities": [
+        {
+          "community_id": "napoleonville-la",
+          "name": "Napoleonville, LA",
+          "population": 700,
+          "food_insecurity_rate": 0.31,
+          "dependency_weight": 0.88
+        },
+        {
+          "community_id": "pierre-part-la",
+          "name": "Pierre Part, LA",
+          "population": 2800,
+          "food_insecurity_rate": 0.30,
+          "dependency_weight": 0.82
+        }
+      ],
+      "primary_route": "LA-1",
+      "backup_route": "LA-308",
+      "waypoints": [
+        {"state": "LA", "county": "Assumption"},
+        {"state": "LA", "county": "Lafourche"}
+      ]
+    },
+    {
+      "id": "iberia-new-iberia",
+      "name": "Iberia Parish → New Iberia",
+      "source_region": "iberia",
+      "source_region_id": "louisiana",
+      "source_bbox": [-92.10, 29.80, -91.50, 30.20],
+      "crop_types": ["sugarcane", "rice", "soybeans"],
+      "destination_communities": [
+        {
+          "community_id": "new-iberia-la",
+          "name": "New Iberia, LA",
+          "population": 29600,
+          "food_insecurity_rate": 0.22,
+          "dependency_weight": 0.60
+        }
+      ],
+      "primary_route": "US-90",
+      "backup_route": "LA-14",
+      "waypoints": [
+        {"state": "LA", "county": "Iberia"},
+        {"state": "LA", "county": "St. Martin"}
+      ]
+    },
+    {
+      "id": "stmartin-breaux-bridge",
+      "name": "St. Martin Parish → Breaux Bridge",
+      "source_region": "st-martin",
+      "source_region_id": "louisiana",
+      "source_bbox": [-91.90, 30.10, -91.40, 30.50],
+      "crop_types": ["crawfish", "rice", "soybeans"],
+      "destination_communities": [
+        {
+          "community_id": "breaux-bridge-la",
+          "name": "Breaux Bridge, LA",
+          "population": 8100,
+          "food_insecurity_rate": 0.19,
+          "dependency_weight": 0.55
+        },
+        {
+          "community_id": "cecilia-la",
+          "name": "Cecilia, LA",
+          "population": 2100,
+          "food_insecurity_rate": 0.25,
+          "dependency_weight": 0.65
+        }
+      ],
+      "primary_route": "I-10",
+      "backup_route": "LA-31",
+      "waypoints": [
+        {"state": "LA", "county": "St. Martin"},
+        {"state": "LA", "county": "St. Landry"}
+      ]
+    },
+    {
+      "id": "vermilion-abbeville",
+      "name": "Vermilion Parish Coast → Abbeville",
+      "source_region": "vermilion",
+      "source_region_id": "louisiana",
+      "source_bbox": [-92.50, 29.60, -91.90, 30.00],
+      "crop_types": ["crawfish", "rice", "cattle"],
+      "destination_communities": [
+        {
+          "community_id": "abbeville-la",
+          "name": "Abbeville, LA",
+          "population": 11900,
+          "food_insecurity_rate": 0.24,
+          "dependency_weight": 0.75
+        },
+        {
+          "community_id": "erath-la",
+          "name": "Erath, LA",
+          "population": 2200,
+          "food_insecurity_rate": 0.28,
+          "dependency_weight": 0.78
+        }
+      ],
+      "primary_route": "LA-14",
+      "backup_route": "US-167",
+      "waypoints": [
+        {"state": "LA", "county": "Vermilion"},
+        {"state": "LA", "county": "Iberia"}
+      ]
+    },
+    {
+      "id": "plaquemines-belle-chasse",
+      "name": "Plaquemines Parish → Belle Chasse",
+      "source_region": "plaquemines",
+      "source_region_id": "louisiana",
+      "source_bbox": [-89.85, 29.30, -89.30, 29.80],
+      "crop_types": ["citrus", "sugarcane", "soybeans"],
+      "destination_communities": [
+        {
+          "community_id": "belle-chasse-la",
+          "name": "Belle Chasse, LA",
+          "population": 12600,
+          "food_insecurity_rate": 0.16,
+          "dependency_weight": 0.60
+        }
+      ],
+      "primary_route": "LA-23",
+      "backup_route": null,
+      "waypoints": [
+        {"state": "LA", "county": "Plaquemines"},
+        {"state": "LA", "county": "Jefferson"}
+      ]
+    },
+    {
+      "id": "pointe-coupee-new-roads",
+      "name": "Pointe Coupee Parish → New Roads",
+      "source_region": "pointe-coupee",
+      "source_region_id": "louisiana",
+      "source_bbox": [-91.70, 30.50, -91.20, 31.00],
+      "crop_types": ["sugarcane", "soybeans", "corn"],
+      "destination_communities": [
+        {
+          "community_id": "new-roads-la",
+          "name": "New Roads, LA",
+          "population": 4600,
+          "food_insecurity_rate": 0.28,
+          "dependency_weight": 0.74
+        }
+      ],
+      "primary_route": "LA-1",
+      "backup_route": "US-190",
+      "waypoints": [
+        {"state": "LA", "county": "Pointe Coupee"},
+        {"state": "LA", "county": "West Baton Rouge"}
+      ]
+    },
+    {
+      "id": "concordia-ferriday",
+      "name": "Concordia Parish → Ferriday",
+      "source_region": "concordia",
+      "source_region_id": "louisiana",
+      "source_bbox": [-91.60, 31.30, -91.10, 31.80],
+      "crop_types": ["soybeans", "corn", "cotton"],
+      "destination_communities": [
+        {
+          "community_id": "ferriday-la",
+          "name": "Ferriday, LA",
+          "population": 3300,
+          "food_insecurity_rate": 0.38,
+          "dependency_weight": 0.90
+        },
+        {
+          "community_id": "vidalia-la",
+          "name": "Vidalia, LA",
+          "population": 4100,
+          "food_insecurity_rate": 0.33,
+          "dependency_weight": 0.85
+        }
+      ],
+      "primary_route": "US-65",
+      "backup_route": "LA-15",
+      "waypoints": [
+        {"state": "LA", "county": "Concordia"},
+        {"state": "LA", "county": "Tensas"}
+      ]
+    },
+    {
+      "id": "tensas-st-joseph",
+      "name": "Tensas Parish Cotton Belt → St. Joseph",
+      "source_region": "tensas",
+      "source_region_id": "louisiana",
+      "source_bbox": [-91.40, 31.70, -91.00, 32.20],
+      "crop_types": ["cotton", "soybeans", "corn"],
+      "destination_communities": [
+        {
+          "community_id": "st-joseph-la",
+          "name": "St. Joseph, LA",
+          "population": 1100,
+          "food_insecurity_rate": 0.41,
+          "dependency_weight": 0.92
+        }
+      ],
+      "primary_route": "US-65",
+      "backup_route": null,
+      "waypoints": [
+        {"state": "LA", "county": "Tensas"},
+        {"state": "LA", "county": "Concordia"}
+      ]
+    },
+    {
+      "id": "east-carroll-lake-providence",
+      "name": "East Carroll Parish → Lake Providence",
+      "source_region": "east-carroll",
+      "source_region_id": "louisiana",
+      "source_bbox": [-91.30, 32.40, -91.00, 32.80],
+      "crop_types": ["soybeans", "corn", "cotton"],
+      "destination_communities": [
+        {
+          "community_id": "lake-providence-la",
+          "name": "Lake Providence, LA",
+          "population": 4300,
+          "food_insecurity_rate": 0.43,
+          "dependency_weight": 0.91
+        }
+      ],
+      "primary_route": "US-65",
+      "backup_route": "LA-2",
+      "waypoints": [
+        {"state": "LA", "county": "East Carroll"},
+        {"state": "LA", "county": "West Carroll"}
+      ]
+    }
+  ],
+  "community_vulnerability_index": {
+    "houma-la":           0.18,
+    "dulac-la":           0.34,
+    "thibodaux-la":       0.21,
+    "raceland-la":        0.26,
+    "morgan-city-la":     0.23,
+    "patterson-la":       0.29,
+    "napoleonville-la":   0.31,
+    "pierre-part-la":     0.30,
+    "new-iberia-la":      0.22,
+    "breaux-bridge-la":   0.19,
+    "cecilia-la":         0.25,
+    "abbeville-la":       0.24,
+    "erath-la":           0.28,
+    "belle-chasse-la":    0.16,
+    "new-roads-la":       0.28,
+    "ferriday-la":        0.38,
+    "vidalia-la":         0.33,
+    "st-joseph-la":       0.41,
+    "lake-providence-la": 0.43
+  }
+}
