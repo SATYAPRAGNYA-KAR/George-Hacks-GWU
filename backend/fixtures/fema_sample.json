@@ -1,0 +1,79 @@
+{
+  "metadata": {
+    "count": 7,
+    "entityname": "DisasterDeclarationsSummaries",
+    "version": "v2"
+  },
+  "DisasterDeclarationsSummaries": [
+    {
+      "disasterNumber": 4812,
+      "state": "IA",
+      "declarationDate": "2026-03-22T00:00:00.000Z",
+      "incidentType": "Severe Storm",
+      "incidentBeginDate": "2026-03-18T00:00:00.000Z",
+      "incidentEndDate": null,
+      "declarationTitle": "Severe Storms and Flooding",
+      "designatedArea": "Polk (County)"
+    },
+    {
+      "disasterNumber": 4812,
+      "state": "IA",
+      "declarationDate": "2026-03-22T00:00:00.000Z",
+      "incidentType": "Severe Storm",
+      "incidentBeginDate": "2026-03-18T00:00:00.000Z",
+      "incidentEndDate": null,
+      "declarationTitle": "Severe Storms and Flooding",
+      "designatedArea": "Story (County)"
+    },
+    {
+      "disasterNumber": 4812,
+      "state": "IA",
+      "declarationDate": "2026-03-22T00:00:00.000Z",
+      "incidentType": "Severe Storm",
+      "incidentBeginDate": "2026-03-18T00:00:00.000Z",
+      "incidentEndDate": null,
+      "declarationTitle": "Severe Storms and Flooding",
+      "designatedArea": "Linn (County)"
+    },
+    {
+      "disasterNumber": 4790,
+      "state": "IA",
+      "declarationDate": "2026-02-05T00:00:00.000Z",
+      "incidentType": "Fire",
+      "incidentBeginDate": "2026-02-01T00:00:00.000Z",
+      "incidentEndDate": "2026-02-28T00:00:00.000Z",
+      "declarationTitle": "Grassland Fire Complex",
+      "designatedArea": "Woodbury (County)"
+    },
+    {
+      "disasterNumber": 4755,
+      "state": "IA",
+      "declarationDate": "2025-12-14T00:00:00.000Z",
+      "incidentType": "Flood",
+      "incidentBeginDate": "2025-12-10T00:00:00.000Z",
+      "incidentEndDate": "2025-12-20T00:00:00.000Z",
+      "declarationTitle": "Winter Flooding",
+      "designatedArea": "Dubuque (County)"
+    },
+    {
+      "disasterNumber": 4700,
+      "state": "IA",
+      "declarationDate": "2022-04-10T00:00:00.000Z",
+      "incidentType": "Tornado",
+      "incidentBeginDate": "2022-04-05T00:00:00.000Z",
+      "incidentEndDate": "2022-04-15T00:00:00.000Z",
+      "declarationTitle": "Spring Tornado Outbreak",
+      "designatedArea": "Polk (County)"
+    },
+    {
+      "disasterNumber": 4820,
+      "state": "CA",
+      "declarationDate": "2026-04-01T00:00:00.000Z",
+      "incidentType": "Fire",
+      "incidentBeginDate": "2026-03-28T00:00:00.000Z",
+      "incidentEndDate": null,
+      "declarationTitle": "Northern California Wildfires",
+      "designatedArea": "Shasta (County)"
+    }
+  ]
+}

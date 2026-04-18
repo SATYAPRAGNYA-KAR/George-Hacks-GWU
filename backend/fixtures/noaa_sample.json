@@ -1,0 +1,99 @@
+{
+  "@context": ["https://geojson.org/geojson-ld/geojson-context.jsonld"],
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.AAA001",
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "id": "urn:oid:2.49.0.1.840.0.AAA001",
+        "areaDesc": "Polk, IA; Story, IA; Dallas, IA",
+        "event": "Flood Warning",
+        "severity": "Severe",
+        "certainty": "Likely",
+        "urgency": "Expected",
+        "headline": "Flood Warning issued April 18 at 6:00AM CDT until April 20 at 12:00PM CDT by NWS Des Moines IA",
+        "effective": "2026-04-18T06:00:00-05:00",
+        "expires": "2026-04-20T12:00:00-05:00",
+        "ends": "2026-04-20T12:00:00-05:00",
+        "description": "Rising river levels along the Des Moines River.",
+        "instruction": "Do not drive through flooded roadways."
+      }
+    },
+    {
+      "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.AAA002",
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "id": "urn:oid:2.49.0.1.840.0.AAA002",
+        "areaDesc": "Linn, IA; Johnson, IA",
+        "event": "Freeze Warning",
+        "severity": "Moderate",
+        "certainty": "Likely",
+        "urgency": "Expected",
+        "headline": "Freeze Warning issued April 17 at 9:00PM CDT until April 18 at 9:00AM CDT",
+        "effective": "2026-04-17T21:00:00-05:00",
+        "expires": "2026-04-18T09:00:00-05:00",
+        "ends": "2026-04-18T09:00:00-05:00",
+        "description": "Sub-freezing temperatures as low as 28F expected."
+      }
+    },
+    {
+      "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.AAA003",
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "id": "urn:oid:2.49.0.1.840.0.AAA003",
+        "areaDesc": "Shasta, CA; Tehama, CA",
+        "event": "Excessive Heat Warning",
+        "severity": "Extreme",
+        "certainty": "Likely",
+        "urgency": "Expected",
+        "headline": "Excessive Heat Warning until April 19 at 8:00PM PDT",
+        "effective": "2026-04-18T10:00:00-07:00",
+        "expires": "2026-04-19T20:00:00-07:00",
+        "ends": "2026-04-19T20:00:00-07:00",
+        "description": "Dangerously hot conditions with temps up to 108F."
+      }
+    },
+    {
+      "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.AAA004",
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "id": "urn:oid:2.49.0.1.840.0.AAA004",
+        "areaDesc": "Story, IA",
+        "event": "Tornado Warning",
+        "severity": "Extreme",
+        "certainty": "Observed",
+        "urgency": "Immediate",
+        "headline": "Tornado Warning issued...",
+        "effective": "2026-04-18T17:30:00-05:00",
+        "expires": "2026-04-18T18:15:00-05:00",
+        "ends": "2026-04-18T18:15:00-05:00",
+        "description": "A tornado was sighted near..."
+      }
+    },
+    {
+      "id": "https://api.weather.gov/alerts/urn:oid:2.49.0.1.840.0.AAA005",
+      "type": "Feature",
+      "geometry": null,
+      "properties": {
+        "id": "urn:oid:2.49.0.1.840.0.AAA005",
+        "areaDesc": "Polk, IA",
+        "event": "Drought Information Statement",
+        "severity": "Moderate",
+        "certainty": "Observed",
+        "urgency": "Expected",
+        "headline": "Drought Information Statement for central Iowa",
+        "effective": "2026-04-10T08:00:00-05:00",
+        "expires": "2026-05-10T08:00:00-05:00",
+        "ends": null,
+        "description": "Ongoing moderate drought conditions."
+      }
+    }
+  ],
+  "title": "current watches, warnings, and advisories for IA",
+  "updated": "2026-04-18T12:00:00+00:00"
+}
