@@ -1,17 +1,40 @@
 """
 Crop health and drought assessment via NDVI phenology (CSISS WPS) and SMAP soil moisture.
+NDVI observations via NASA LANCE/MODIS (ORNL DAAC) with WPS fallback.
+
+Primary focus: Louisiana (FIPS 22).  All functions accept any WGS84 bounding box,
+so coverage can be expanded to other states by swapping the bbox argument.
+
+Louisiana crop context
+----------------------
+Primary commodities: sugarcane, rice, cotton, soybeans, corn.
+Growing season: rice/cotton Apr–Oct; sugarcane year-round harvest Nov–Jan;
+soybeans May–Oct.  Drought risk is tied to Gulf moisture and hurricane-season
+precipitation anomalies rather than Great-Plains dry patterns.
+
+Quick-start (Louisiana defaults)
+---------------------------------
+    from crop_health import LOUISIANA_BBOX, get_crop_health, get_drought_status, get_ndvi_observation
+
+    health  = get_crop_health(LOUISIANA_BBOX, "2024-07-15")
+    drought = get_drought_status(LOUISIANA_BBOX, "2024-07-15")
+    obs     = get_ndvi_observation(LOUISIANA_BBOX, "2024-07-15", region_id="louisiana")
 
 Functions
 ---------
-get_crop_health(region_bbox, date)   -> dict
+get_crop_health(region_bbox, date)    -> dict
 get_drought_status(region_bbox, date) -> dict
+get_ndvi_observation(region_bbox, date, region_id) -> dict  (LANCE primary, WPS fallback)
 
 Both accept:
   region_bbox : (min_lon, min_lat, max_lon, max_lat) in WGS84
   date        : "YYYY-MM-DD" str or datetime.date
+
+EARTHDATA_TOKEN env var enables MOD13Q1N (LANCE NRT); falls back to MOD13Q1 without it.
 """
 
 import io
+import os
 import re
 import time
 import datetime
@@ -31,6 +54,26 @@ _WPS_BASE = "https://cloud.csiss.gmu.edu/smap_service"
 _NDVI_PRODUCT_ID = "NDVI-WEEKLY"
 _SMAP_PRODUCT_ID = "SMAP-L4-SM"          # swap if the service uses a different ID
 _DEFAULT_BASELINE_YEARS = list(range(2016, 2022))
+
+# ---------------------------------------------------------------------------
+# Louisiana defaults  (swap bbox to scale to any other region)
+# ---------------------------------------------------------------------------
+
+LOUISIANA_BBOX: tuple = (-94.04, 28.93, -88.82, 33.02)  # (min_lon, min_lat, max_lon, max_lat) WGS84
+LOUISIANA_FIPS: str = "22"
+LOUISIANA_REGION_ID: str = "louisiana"
+
+# ---------------------------------------------------------------------------
+# ORNL DAAC MODIS Web Service (NASA LANCE)
+# ---------------------------------------------------------------------------
+
+_ORNL_BASE = "https://modis.ornl.gov/rst/api/v1"
+_LANCE_NRT_PRODUCT = "MOD13Q1N"   # LANCE near-real-time Terra NDVI 16-day 250 m
+_LANCE_STABLE_PRODUCT = "MOD13Q1" # stable Terra NDVI — used for baseline years
+_ORNL_NDVI_BAND = "250m_16_days_NDVI"
+_ORNL_QA_BAND = "250m_16_days_pixel_reliability"
+_ORNL_NDVI_SCALE = 0.0001          # raw integer × scale → NDVI (0–1)
+_ORNL_NODATA = -28672
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -96,6 +139,152 @@ def _wps_fetch_yearly_profile(product_id: str, lon: float, lat: float, year: int
         return df[data_col].values.astype(float)
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# NASA LANCE / ORNL DAAC MODIS helpers
+# ---------------------------------------------------------------------------
+
+def _to_modis_doy(d: datetime.date) -> str:
+    """Return MODIS date string A{YYYY}{DDD} for the given date."""
+    return f"A{d.year}{d.timetuple().tm_yday:03d}"
+
+
+def _safe_replace_year(d: datetime.date, year: int) -> datetime.date:
+    """Replace year, clamping Feb-29 to Feb-28 on non-leap years."""
+    try:
+        return d.replace(year=year)
+    except ValueError:
+        return d.replace(year=year, day=28)
+
+
+def _ornl_fetch_ndvi_point(
+    lat: float,
+    lon: float,
+    date: datetime.date,
+    product: str,
+    token: Optional[str],
+    km_buffer: float = 1.0,
+) -> Optional[float]:
+    """
+    Query ORNL DAAC MODIS Web Service for mean NDVI at a single point.
+
+    Searches the 16-day composite window ending on `date`. Returns
+    a quality-filtered mean NDVI (0–1) or None on any failure.
+    """
+    # Use a 16-day lookback so the composite that covers `date` is returned.
+    start = date - datetime.timedelta(days=16)
+    params = {
+        "latitude": lat,
+        "longitude": lon,
+        "startDate": _to_modis_doy(start),
+        "endDate": _to_modis_doy(date),
+        "kmAboveBelow": int(km_buffer),
+        "kmLeftRight": int(km_buffer),
+    }
+    headers = {"Authorization": f"Bearer {token}"} if token else {}
+    url = f"{_ORNL_BASE}/{product}/subset"
+    try:
+        r = requests.get(url, params=params, headers=headers, timeout=60)
+        r.raise_for_status()
+        payload = r.json()
+    except Exception:
+        return None
+
+    subsets = payload.get("subset", [])
+
+    # Build a per-pixel QA mask from the reliability band (0=good, 1=useful)
+    qa_mask: Optional[np.ndarray] = None
+    for entry in subsets:
+        if entry.get("band") == _ORNL_QA_BAND:
+            qa_arr = np.array(entry["data"], dtype=np.int16)
+            qa_mask = qa_arr <= 1  # True where pixel is usable
+            break
+
+    ndvi_vals: list[float] = []
+    for entry in subsets:
+        if entry.get("band") != _ORNL_NDVI_BAND:
+            continue
+        raw = np.array(entry["data"], dtype=np.int32)
+
+        # Apply fill-value and valid-range filters
+        valid = (raw != _ORNL_NODATA) & (raw >= -2000) & (raw <= 10000)
+        if qa_mask is not None and qa_mask.shape == raw.shape:
+            valid &= qa_mask
+
+        scaled = raw[valid].astype(float) * _ORNL_NDVI_SCALE
+        # Final sanity clip: NDVI physically bounded to [-0.2, 1.0]
+        scaled = scaled[(scaled >= -0.2) & (scaled <= 1.0)]
+        ndvi_vals.extend(scaled.tolist())
+
+    return float(np.mean(ndvi_vals)) if ndvi_vals else None
+
+
+def _ornl_aggregate_bbox(
+    bbox: Tuple[float, float, float, float],
+    date: datetime.date,
+    product: str,
+    n_samples: int,
+    token: Optional[str],
+    delay: float,
+) -> Optional[float]:
+    """Sample grid points within bbox and return mean NDVI via ORNL DAAC."""
+    points = _sample_grid_points(bbox, n_samples)
+    vals: list[float] = []
+    for lon, lat in points:
+        v = _ornl_fetch_ndvi_point(lat, lon, date, product, token)
+        if v is not None:
+            vals.append(v)
+        time.sleep(delay)
+    return float(np.mean(vals)) if vals else None
+
+
+def _wps_ndvi_at_week(
+    bbox: Tuple[float, float, float, float],
+    date: datetime.date,
+    n_samples: int,
+    delay: float,
+) -> Optional[float]:
+    """WPS fallback: return mean NDVI for the target week across sampled points."""
+    year, week = date.year, _iso_week(date)
+    points = _sample_grid_points(bbox, n_samples)
+    vals: list[float] = []
+    for lon, lat in points:
+        raw = _wps_fetch_yearly_profile(_NDVI_PRODUCT_ID, lon, lat, year)
+        if raw is None or len(raw) < week:
+            time.sleep(delay)
+            continue
+        v = float(raw[week - 1])
+        if not np.isnan(v):
+            # Normalize byte-scaled values to 0–1 if needed
+            vals.append(v / 255.0 if v > 1.5 else v)
+        time.sleep(delay)
+    return float(np.mean(vals)) if vals else None
+
+
+def _baseline_ndvi(
+    bbox: Tuple[float, float, float, float],
+    date: datetime.date,
+    baseline_years: list,
+    n_samples: int,
+    token: Optional[str],
+    delay: float,
+) -> Optional[float]:
+    """
+    Compute climatological mean NDVI for the same DOY across baseline_years.
+
+    Tries ORNL stable product first; falls back to WPS per year if ORNL fails.
+    """
+    year_means: list[float] = []
+    for yr in baseline_years:
+        bl_date = _safe_replace_year(date, yr)
+        v = _ornl_aggregate_bbox(bbox, bl_date, _LANCE_STABLE_PRODUCT, n_samples, token, delay)
+        if v is None:
+            # WPS fallback for this baseline year
+            v = _wps_ndvi_at_week(bbox, bl_date, n_samples, delay)
+        if v is not None:
+            year_means.append(v)
+    return float(np.mean(year_means)) if year_means else None
 
 
 # ---------------------------------------------------------------------------
@@ -328,4 +517,112 @@ def get_drought_status(
         "anomaly": round(anomaly, 5),
         "anomaly_pct": round(anomaly_pct, 2) if anomaly_pct is not None else None,
         "status": status,
+    }
+
+
+def get_ndvi_observation(
+    region_bbox: Tuple[float, float, float, float],
+    date: Union[str, datetime.date],
+    region_id: str = LOUISIANA_REGION_ID,
+    baseline_years: Optional[list] = None,
+    n_samples: int = 9,
+    nasa_token: Optional[str] = None,
+    sample_delay: float = 0.3,
+) -> dict:
+    """
+    Return a current-vs-baseline NDVI snapshot for any region.
+
+    Data source priority
+    --------------------
+    1. NASA LANCE NRT (MOD13Q1N, 250 m, ~hours latency) via ORNL DAAC Web Service.
+       Requires ``EARTHDATA_TOKEN`` env var or ``nasa_token`` argument.
+    2. NASA MODIS stable (MOD13Q1) — same API, no auth, slightly higher latency.
+       Used automatically when NRT product returns no data.
+    3. CSISS WPS NDVI-WEEKLY profile — the existing CropSmart fallback.
+
+    Baseline is the climatological mean for the same day-of-year across
+    ``baseline_years`` (default 2016–2021), computed from the same source
+    tier that succeeded for the current observation, with per-year WPS
+    fallback if ORNL fails for a given year.
+
+    Parameters
+    ----------
+    region_bbox    : (min_lon, min_lat, max_lon, max_lat) in WGS84
+    date           : "YYYY-MM-DD" string or datetime.date
+    region_id      : caller-supplied label included verbatim in output
+    baseline_years : list of int years for climatological mean
+    n_samples      : grid points sampled within bbox
+                     (total ORNL calls ≈ n_samples × (1 + len(baseline_years)))
+    nasa_token     : NASA Earthdata bearer token; falls back to EARTHDATA_TOKEN env var
+    sample_delay   : seconds between requests (rate limiting)
+
+    Returns
+    -------
+    JSON-serialisable dict
+        region_id      : str
+        date           : "YYYY-MM-DD"
+        ndvi_current   : float | null   — mean NDVI for the observation date
+        ndvi_baseline  : float | null   — climatological mean NDVI
+        deviation_pct  : float | null   — (current − baseline) / baseline × 100
+        status         : "above_average" | "average" | "below_average" |
+                         "stressed" | "data_unavailable"
+        source         : "lance_nrt" | "lance_stable" | "wps_fallback" | "unavailable"
+    """
+    d = _parse_date(date)
+    token: Optional[str] = nasa_token or os.environ.get("EARTHDATA_TOKEN")
+    bl_years = baseline_years if baseline_years is not None else _DEFAULT_BASELINE_YEARS
+
+    # ---- 1. Try LANCE NRT ----
+    current = _ornl_aggregate_bbox(region_bbox, d, _LANCE_NRT_PRODUCT, n_samples, token, sample_delay)
+    source = "lance_nrt"
+
+    # ---- 2. Degrade to stable MODIS if NRT unavailable ----
+    if current is None:
+        current = _ornl_aggregate_bbox(region_bbox, d, _LANCE_STABLE_PRODUCT, n_samples, token, sample_delay)
+        source = "lance_stable"
+
+    # ---- 3. Fall back to WPS ----
+    if current is None:
+        current = _wps_ndvi_at_week(region_bbox, d, n_samples, sample_delay)
+        source = "wps_fallback"
+
+    if current is None:
+        return {
+            "region_id": region_id,
+            "date": str(d),
+            "ndvi_current": None,
+            "ndvi_baseline": None,
+            "deviation_pct": None,
+            "status": "data_unavailable",
+            "source": "unavailable",
+        }
+
+    # ---- Baseline (uses same ORNL path + per-year WPS fallback internally) ----
+    baseline = _baseline_ndvi(region_bbox, d, bl_years, n_samples, token, sample_delay)
+
+    # ---- Deviation and status ----
+    if baseline and baseline != 0.0:
+        deviation_pct = (current - baseline) / baseline * 100.0
+    else:
+        deviation_pct = None
+
+    if deviation_pct is None:
+        status = "data_unavailable"
+    elif deviation_pct > 10.0:
+        status = "above_average"
+    elif deviation_pct >= -10.0:
+        status = "average"
+    elif deviation_pct >= -20.0:
+        status = "below_average"
+    else:
+        status = "stressed"
+
+    return {
+        "region_id": region_id,
+        "date": str(d),
+        "ndvi_current": round(current, 4),
+        "ndvi_baseline": round(baseline, 4) if baseline is not None else None,
+        "deviation_pct": round(deviation_pct, 2) if deviation_pct is not None else None,
+        "status": status,
+        "source": source,
     }
