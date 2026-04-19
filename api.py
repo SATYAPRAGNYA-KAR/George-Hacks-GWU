@@ -44,8 +44,9 @@ import time
 from typing import Any, Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from crop_health import (
@@ -197,34 +198,9 @@ def _run_analysis(
 # Builder 1 routes (unchanged)
 # ---------------------------------------------------------------------------
 
-@app.get("/", tags=["meta"])
-def root():
-    return {
-        "service": "rootbridge-api",
-        "status": "ok",
-        "docs": "/docs",
-        "builder1_endpoints": {
-            "crop_health": "GET /api/crop-health/{region_id}",
-            "analyze":     "POST /api/analyze",
-            "regions":     "GET /api/regions",
-        },
-        "builder3_endpoints": {
-            "alerts":       "GET /api/alerts",
-            "community_alert": "GET /api/alerts/{community_id}",
-            "risk_all":     "GET /api/risk",
-            "risk_one":     "GET /api/risk/{community_id}",
-            "refresh":      "POST /api/alerts/refresh",
-            "disruptions":  "GET /api/disruptions/{region_id}",
-        },
-        "default_region": LOUISIANA_REGION_ID,
-        "thresholds": {
-            "warning_pct":  ANOMALY_WARNING_PCT,
-            "critical_pct": ANOMALY_CRITICAL_PCT,
-            "alert_watch":   40,
-            "alert_warning": 60,
-            "alert_action":  80,
-        },
-    }
+@app.get("/api/health", tags=["meta"])
+def health():
+    return {"status": "ok"}
 
 
 @app.get("/api/regions", tags=["meta"])
@@ -297,3 +273,22 @@ def run_analysis(req: AnalyzeRequest):
     finally:
         with _lock:
             _running.discard(region_id)
+
+
+# ---------------------------------------------------------------------------
+# Serve React SPA (must come after all API routes)
+# ---------------------------------------------------------------------------
+
+_dist = Path(__file__).parent / "rootbridge-project" / "dist"
+
+if _dist.exists():
+    _assets = _dist / "assets"
+    if _assets.exists():
+        app.mount("/assets", StaticFiles(directory=_assets), name="assets")
+
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def serve_spa(full_path: str):
+        file = _dist / full_path
+        if file.is_file():
+            return FileResponse(file)
+        return FileResponse(_dist / "index.html")

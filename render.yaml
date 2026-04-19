@@ -5,9 +5,9 @@ services:
     plan: free
     region: ohio
     branch: main
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && npm install --prefix rootbridge-project && npm run build --prefix rootbridge-project
     startCommand: uvicorn api:app --host 0.0.0.0 --port $PORT
-    healthCheckPath: /
+    healthCheckPath: /api/health
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
@@ -15,15 +15,3 @@ services:
         sync: false
       - key: EARTHDATA_TOKEN
         sync: false
-
-staticSites:
-  - name: rootbridge-frontend
-    branch: main
-    rootDir: rootbridge-project
-    buildCommand: npm install && npm run build
-    staticPublishPath: dist
-    pullRequestPreviewsEnabled: false
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
