@@ -29,9 +29,10 @@ from risk_engine import RiskScore
 # ---------------------------------------------------------------------------
 # Threshold bands
 # ---------------------------------------------------------------------------
-THRESHOLD_WATCH   = 40.0
-THRESHOLD_WARNING = 60.0
-THRESHOLD_ACTION  = 80.0
+THRESHOLD_WATCH    = 40.0
+THRESHOLD_WARNING  = 60.0
+THRESHOLD_ACTION   = 75.0
+THRESHOLD_CRITICAL = 90.0
 
 # ---------------------------------------------------------------------------
 # Recommended action libraries
@@ -111,6 +112,8 @@ class Alert:
 # ---------------------------------------------------------------------------
 
 def _level_from_score(score: float) -> str | None:
+    if score >= THRESHOLD_CRITICAL:
+        return "Critical"
     if score >= THRESHOLD_ACTION:
         return "Action"
     if score >= THRESHOLD_WARNING:

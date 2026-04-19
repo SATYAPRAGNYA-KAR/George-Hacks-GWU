@@ -378,45 +378,30 @@ def compute_risk(community_id: str) -> RiskScore:
     is_mock = crop_payload.get("_mock") or disruption_payload.get("_mock")
     data_quality = "mock" if is_mock else "full"
 
-    # ---- Always compute deterministic scores (needed for ComponentScores) ----
-    crop_score,       crop_factors  = _crop_health_score(crop_payload)
-    disruption_score, dis_factors   = _disruption_score(disruption_payload)
-    corridor_score,   corr_factors  = _corridor_dependency_score(community)
-    vuln_score,       vuln_factors  = _vulnerability_score(community_id, community)
+    # ---- Always compute deterministic component scores ----
+    # These are needed for ComponentScores regardless of whether Gemini succeeds.
+    crop_score,       crop_factors    = _crop_health_score(crop_payload)
+    disruption_score, dis_factors     = _disruption_score(disruption_payload)
+    corridor_score,   corr_factors    = _corridor_dependency_score(community)
+    vuln_score,       vuln_factors    = _vulnerability_score(community_id, community)
 
-    det_composite = round(
-        crop_score       * W_CROP
-        + disruption_score * W_DISRUPTION
-        + corridor_score   * W_CORRIDOR
-        + vuln_score       * W_VULNERABILITY,
+    # ---- Composite (deterministic baseline) ----
+    composite = round(
+        crop_score        * W_CROP
+        + disruption_score  * W_DISRUPTION
+        + corridor_score    * W_CORRIDOR
+        + vuln_score        * W_VULNERABILITY,
         2,
     )
+
+    # ---- Top 3 factors by contribution magnitude ----
     scored_factors: list[tuple[float, str]] = []
-    for f in crop_factors:  scored_factors.append((crop_score * W_CROP, f))
-    for f in dis_factors:   scored_factors.append((disruption_score * W_DISRUPTION, f))
-    for f in corr_factors:  scored_factors.append((corridor_score * W_CORRIDOR, f))
-    for f in vuln_factors:  scored_factors.append((vuln_score * W_VULNERABILITY, f))
+    for f in crop_factors:   scored_factors.append((crop_score * W_CROP, f))
+    for f in dis_factors:    scored_factors.append((disruption_score * W_DISRUPTION, f))
+    for f in corr_factors:   scored_factors.append((corridor_score * W_CORRIDOR, f))
+    for f in vuln_factors:   scored_factors.append((vuln_score * W_VULNERABILITY, f))
     scored_factors.sort(key=lambda t: t[0], reverse=True)
-    det_top_factors = [f for _, f in scored_factors[:3]]
-
-    # ---- Try LLM override ----
-    from gemini_scorer import score_risk_llm
-
-    llm_result = score_risk_llm(
-        community_id=community_id,
-        community_name=community["name"],
-        crop_payload=crop_payload,
-        disruption_payload=disruption_payload,
-        corridor=corridor,
-        community=community,
-    )
-
-    if llm_result is not None:
-        composite   = llm_result["risk_score"]
-        top_factors = llm_result["top_factors"]
-    else:
-        composite   = det_composite
-        top_factors = det_top_factors
+    top_factors = [f for _, f in scored_factors[:3]]
 
     components = ComponentScores(
         crop_health=crop_score,
