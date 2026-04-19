@@ -15,3 +15,15 @@ services:
         sync: false
       - key: EARTHDATA_TOKEN
         sync: false
+
+staticSites:
+  - name: rootbridge-frontend
+    branch: main
+    rootDir: rootbridge-project
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    pullRequestPreviewsEnabled: false
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
