@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* FoodReady design system — humanitarian gov-tech, calm trust + measured urgency. All HSL. */
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 215 30% 14%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 215 30% 14%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 215 30% 14%;
+
+    /* Deep teal — trust, govtech */
+    --primary: 192 76% 24%;
+    --primary-foreground: 180 30% 97%;
+    --primary-glow: 188 70% 42%;
+
+    /* Warm earth secondary */
+    --secondary: 35 35% 94%;
+    --secondary-foreground: 215 30% 18%;
+
+    --muted: 210 30% 94%;
+    --muted-foreground: 215 16% 42%;
+
+    --accent: 188 70% 92%;
+    --accent-foreground: 192 76% 18%;
+
+    --destructive: 0 75% 48%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 215 20% 88%;
+    --input: 215 20% 88%;
+    --ring: 192 76% 30%;
+
+    --radius: 0.625rem;
+
+    /* Risk scale — calibrated, not alarmist */
+    --risk-prepared: 152 56% 38%;     /* 0-39   green */
+    --risk-watch: 45 92% 48%;         /* 40-59  amber */
+    --risk-warning: 28 88% 50%;       /* 60-74  orange */
+    --risk-action: 12 78% 48%;        /* 75-89  red-orange */
+    --risk-critical: 350 72% 38%;     /* 90-100 deep red */
+
+    --gradient-hero: linear-gradient(135deg, hsl(192 76% 18%) 0%, hsl(188 70% 32%) 50%, hsl(168 55% 38%) 100%);
+    --gradient-subtle: linear-gradient(180deg, hsl(210 40% 98%) 0%, hsl(188 40% 95%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%) 0%, hsl(210 30% 97%) 100%);
+
+    --shadow-sm: 0 1px 2px hsl(215 30% 14% / 0.04);
+    --shadow-md: 0 4px 16px -4px hsl(215 30% 14% / 0.08);
+    --shadow-lg: 0 12px 40px -8px hsl(192 76% 24% / 0.18);
+    --shadow-glow: 0 0 32px hsl(188 70% 42% / 0.25);
+
+    --sidebar-background: 192 40% 12%;
+    --sidebar-foreground: 188 30% 88%;
+    --sidebar-primary: 188 70% 50%;
+    --sidebar-primary-foreground: 192 76% 14%;
+    --sidebar-accent: 192 40% 18%;
+    --sidebar-accent-foreground: 188 30% 92%;
+    --sidebar-border: 192 40% 20%;
+    --sidebar-ring: 188 70% 50%;
+
+    --transition-base: 200ms cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .dark {
+    --background: 215 35% 8%;
+    --foreground: 188 30% 94%;
+    --card: 215 32% 11%;
+    --card-foreground: 188 30% 94%;
+    --popover: 215 32% 11%;
+    --popover-foreground: 188 30% 94%;
+    --primary: 188 70% 50%;
+    --primary-foreground: 192 76% 12%;
+    --primary-glow: 188 80% 60%;
+    --secondary: 215 28% 16%;
+    --secondary-foreground: 188 30% 94%;
+    --muted: 215 28% 16%;
+    --muted-foreground: 188 15% 65%;
+    --accent: 192 40% 22%;
+    --accent-foreground: 188 70% 88%;
+    --destructive: 0 70% 52%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 215 25% 20%;
+    --input: 215 25% 20%;
+    --ring: 188 70% 50%;
+    --gradient-hero: linear-gradient(135deg, hsl(192 76% 12%) 0%, hsl(188 70% 22%) 50%, hsl(168 55% 26%) 100%);
+    --gradient-subtle: linear-gradient(180deg, hsl(215 35% 8%) 0%, hsl(192 40% 12%) 100%);
+    --gradient-card: linear-gradient(145deg, hsl(215 32% 11%) 0%, hsl(215 30% 13%) 100%);
+  }
+}
+
+@layer base {
+  * { @apply border-border; }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  h1, h2, h3, h4 { @apply tracking-tight; }
+}
+
+@layer components {
+  .risk-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold;
+  }
+  .metric-card {
+    @apply rounded-xl border bg-card p-5 shadow-[var(--shadow-sm)] transition-shadow hover:shadow-[var(--shadow-md)];
+  }
+  .glass-panel {
+    @apply rounded-xl border bg-card/80 backdrop-blur-sm shadow-[var(--shadow-md)];
+  }
+}
+
+/* Leaflet container fixes */
+.leaflet-container { @apply rounded-lg; background: hsl(var(--muted)); font-family: inherit; }
+.leaflet-tooltip {
+  @apply rounded-md border-0 bg-card text-card-foreground shadow-[var(--shadow-md)] !important;
+  padding: 8px 12px !important;
+  font-size: 12px !important;
+}
+.leaflet-tooltip-top:before { border-top-color: hsl(var(--card)) !important; }
