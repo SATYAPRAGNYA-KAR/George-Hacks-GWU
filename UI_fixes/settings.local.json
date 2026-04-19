@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C \"c:/Users/Peyto/.vscode/Personal_coding_projects/George-Hacks-GWU\" push origin main)"
+    ]
+  }
+}

@@ -197,7 +197,20 @@ def get_community_risk(community_id: str) -> dict[str, Any]:
             detail=f"Community '{community_id}' not found.",
         )
     r = entry.risk
-    return r.to_dict()
+    return {
+        "community_id":   r.community_id,
+        "community_name": r.community_name,
+        "corridor_id":    r.corridor_id,
+        "risk_score":     r.risk_score,
+        "data_quality":   r.data_quality,
+        "components": {
+            "crop_health":             r.components.crop_health,
+            "disruption":              r.components.disruption,
+            "corridor_dependency":     r.components.corridor_dependency,
+            "community_vulnerability": r.components.community_vulnerability,
+        },
+        "top_factors": r.top_factors,
+    }
 
 
 class RefreshRequest(BaseModel):
