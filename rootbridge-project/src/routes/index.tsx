@@ -7,21 +7,6 @@ import { api, type Alert, type RiskCommunity } from "@/lib/api";
 import { AlertTriangle, Activity, MapPin, ArrowRight, Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/")({
-  head: () => ({
-    meta: [
-      { title: "RootBridge — Louisiana Food Security Dashboard" },
-      {
-        name: "description",
-        content:
-          "Live food-supply risk monitoring for Louisiana communities, powered by NASA crop health data and corridor analysis.",
-      },
-      { property: "og:title", content: "RootBridge — Louisiana Food Security" },
-      {
-        property: "og:description",
-        content: "Live alerts and risk scores for Louisiana food supply corridors.",
-      },
-    ],
-  }),
   component: HomePage,
 });
 

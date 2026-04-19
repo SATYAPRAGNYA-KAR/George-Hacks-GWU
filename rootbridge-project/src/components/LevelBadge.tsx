@@ -1,7 +1,8 @@
 import { levelClasses } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-export function LevelBadge({ level }: { level: string }) {
+export function LevelBadge({ level }: { level: string | null | undefined }) {
+  if (!level) return null;
   return (
     <span
       className={cn(

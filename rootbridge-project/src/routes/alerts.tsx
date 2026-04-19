@@ -6,20 +6,6 @@ import { api, type Alert } from "@/lib/api";
 import { Loader2, RefreshCw } from "lucide-react";
 
 export const Route = createFileRoute("/alerts")({
-  head: () => ({
-    meta: [
-      { title: "Active Alerts — RootBridge" },
-      {
-        name: "description",
-        content: "All active food-security alerts across Louisiana communities.",
-      },
-      { property: "og:title", content: "Active Alerts — RootBridge" },
-      {
-        property: "og:description",
-        content: "Watch, Warning and Action-level food-supply alerts.",
-      },
-    ],
-  }),
   component: AlertsPage,
 });
 

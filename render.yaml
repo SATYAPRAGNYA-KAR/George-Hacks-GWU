@@ -15,3 +15,7 @@ services:
         sync: false
       - key: EARTHDATA_TOKEN
         sync: false
+      - key: BUILDER1_API
+        value: https://food-insecurity-api.onrender.com
+      - key: BUILDER2_API
+        value: https://food-insecurity-api.onrender.com

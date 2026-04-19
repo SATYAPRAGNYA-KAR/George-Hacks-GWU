@@ -1,4 +1,4 @@
-export const API_BASE = "https://food-insecurity-api.onrender.com";
+export const API_BASE = "";
 
 export type AlertLevel = "Watch" | "Warning" | "Action" | string;
 
@@ -50,8 +50,8 @@ export const api = {
   regions: () => fetchJson<unknown>("/api/regions"),
 };
 
-export function levelClasses(level: string) {
-  const l = level.toLowerCase();
+export function levelClasses(level: string | null | undefined) {
+  const l = (level ?? "").toLowerCase();
   if (l === "action")
     return "bg-[var(--level-action)] text-destructive-foreground";
   if (l === "warning")

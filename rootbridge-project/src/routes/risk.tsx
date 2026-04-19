@@ -6,21 +6,6 @@ import { api, type RiskCommunity } from "@/lib/api";
 import { Loader2 } from "lucide-react";
 
 export const Route = createFileRoute("/risk")({
-  head: () => ({
-    meta: [
-      { title: "Community Risk Scores — RootBridge" },
-      {
-        name: "description",
-        content:
-          "Composite food-supply risk scores for every monitored Louisiana community.",
-      },
-      { property: "og:title", content: "Community Risk Scores — RootBridge" },
-      {
-        property: "og:description",
-        content: "Crop health, disruption, corridor and vulnerability breakdowns.",
-      },
-    ],
-  }),
   component: RiskPage,
 });
 
