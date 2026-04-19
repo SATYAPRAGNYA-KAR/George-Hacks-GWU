@@ -155,19 +155,40 @@ async def get_all_states_fpi(
             vuln    = _STATE_VULN_BASELINE.get(state, _DEFAULT_VULN)
             state_name = _STATE_NAMES.get(state, region.display_name)
 
-            # State-level score: no county data needed for quick overview
-            shock = weather.get("shock_score", 20.0)
+            # # State-level score: no county data needed for quick overview
+            # shock = weather.get("shock_score", 20.0)
+            # vuln_score = (
+            #     vuln["poverty_pct"] * 0.35 +
+            #     vuln["food_insecurity_pct"] * 0.35 +
+            #     vuln["no_vehicle_pct"] * 0.15 +
+            #     vuln["svi_score"] * 0.15
+            # )
+            # # For states page we use a lighter Gemini call (state-level)
+            # scored = _score_state(
+            #     state, state_name, weather,
+            #     [{"score": (shock * 0.4 + vuln_score * 0.6), "trigger": "watch",
+            #       "population": 1000000}],
+            # )
+            shock      = weather.get("shock_score", 20.0)
+            vuln       = _STATE_VULN_BASELINE.get(state, _DEFAULT_VULN)
             vuln_score = (
                 vuln["poverty_pct"] * 0.35 +
                 vuln["food_insecurity_pct"] * 0.35 +
                 vuln["no_vehicle_pct"] * 0.15 +
                 vuln["svi_score"] * 0.15
             )
-            # For states page we use a lighter Gemini call (state-level)
+
+            # Pass raw components — Gemini decides how to weight them
             scored = _score_state(
                 state, state_name, weather,
-                [{"score": (shock * 0.4 + vuln_score * 0.6), "trigger": "watch",
-                  "population": 1000000}],
+                [{
+                    "shock_score":    round(shock, 1),
+                    "vulnerability":  round(vuln_score, 1),
+                    "supply_gap":     50,
+                    "readiness_gap":  50,
+                    "trigger":        "watch",
+                    "population":     1_000_000,
+                }],
             )
 
             doc = {
@@ -266,9 +287,43 @@ async def get_state_fpi(
         vuln["no_vehicle_pct"] * 0.15 +
         vuln["svi_score"] * 0.15
     )
-    county_proxy = [{"score": shock * 0.4 + vuln_score * 0.6, "trigger": "watch", "population": 1000000}]
+    # county_proxy = [{"score": shock * 0.4 + vuln_score * 0.6, "trigger": "watch", "population": 1000000}]
 
-    scored = _score_state(state, state_name, weather, county_proxy, fema_count=fema_count)
+    # scored = _score_state(state, state_name, weather, county_proxy, fema_count=fema_count)
+    from db import Collections
+    db_handle = await _db()
+
+    # Pull any cached county scores for this state from MongoDB
+    county_summaries = []
+    try:
+        cursor = db_handle[Collections.RISK_CACHE].find(
+            {"state_abbr": state, "county_fips": {"$nin": ["__state__", "__state_full__"]}}
+        )
+        async for doc in cursor:
+            county_summaries.append({
+                "score":      doc.get("risk_score", 30),
+                "trigger":    doc.get("trigger", "prepared"),
+                "population": 50000,
+                "fips":       doc.get("county_fips"),
+            })
+    except Exception as e:
+        logger.warning("County cache lookup failed: %s", e)
+
+    # Fall back to the proxy if no counties cached yet
+    # if not county_summaries:
+    #     county_summaries = [{"score": shock * 0.4 + vuln_score * 0.6,
+    #                         "trigger": "watch", "population": 1000000}]
+    if not county_summaries:
+        county_summaries = [{
+            "shock_score":    round(shock, 1),
+            "vulnerability":  round(vuln_score, 1),
+            "supply_gap":     50,
+            "readiness_gap":  50,
+            "trigger":        "watch",
+            "population":     1_000_000,
+        }]
+
+    scored = _score_state(state, state_name, weather, county_summaries, fema_count=fema_count)
 
     doc = {
         "state_abbr":         state,

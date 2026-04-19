@@ -303,3 +303,145 @@ export function scoreToTrigger(score: number): TriggerLevel {
   if (score >= 40) return "watch";
   return "prepared";
 }
+
+// ─── Add these to frontend/src/lib/api.ts ───
+// (paste after the existing SignalReportRequest interface and before the helpers section)
+
+// ---------------------------------------------------------------------------
+// Community Requests
+// ---------------------------------------------------------------------------
+
+export type RequestStatus =
+  | "submitted" | "screening" | "verified" | "assigned"
+  | "in_transit" | "resolved" | "escalated" | "closed";
+
+export type RequestUrgency = "urgent_24h" | "moderate_week" | "low_general";
+
+export interface StatusHistoryEntry {
+  status:      RequestStatus;
+  timestamp:   string;
+  note:        string;
+  assigned_org?: string;
+}
+
+export interface CommunityRequest {
+  reference:          string;
+  state_abbr:         string;
+  county_fips:        string;
+  city:               string;
+  zip:                string;
+  type:               string;
+  urgency:            RequestUrgency;
+  household_size:     number;
+  description:        string;
+  contact?:           string;
+  contact_email?:     string;
+  status:             RequestStatus;
+  status_history:     StatusHistoryEntry[];
+  assigned_org?:      string;
+  assigned_org_name?: string;
+  resolution_note?:   string;
+  created_at:         string;
+  updated_at:         string;
+}
+
+export interface SubmitRequestPayload {
+  state_abbr:     string;
+  county_fips:    string;
+  city?:          string;
+  zip?:           string;
+  type:           string;
+  urgency:        RequestUrgency;
+  household_size: number;
+  description:    string;
+  contact?:       string;
+  contact_email?: string;
+}
+
+export interface UpdateStatusPayload {
+  status:             RequestStatus;
+  note?:              string;
+  assigned_org?:      string;
+  assigned_org_name?: string;
+  resolution_note?:   string;
+}
+
+export interface RequestStats {
+  state_abbr: string;
+  total:      number;
+  open:       number;
+  by_status:  Record<RequestStatus, number>;
+}
+
+// Submit a new community request — saved to MongoDB
+export const submitCommunityRequest = (payload: SubmitRequestPayload) =>
+  post<{ status: string; reference: string; request: CommunityRequest }>(
+    "/api/requests", payload
+  );
+
+// Look up a request by reference number (FR-XXXX-XXXX)
+export const fetchRequestByRef = (reference: string) =>
+  get<CommunityRequest>(`/api/requests/${reference.trim().toUpperCase()}`);
+
+// List requests — used by responder portal
+export const fetchRequests = (params: {
+  state_abbr?: string;
+  county_fips?: string;
+  status?: RequestStatus;
+  urgency?: RequestUrgency;
+  limit?: number;
+  skip?: number;
+}) => {
+  const q = new URLSearchParams();
+  if (params.state_abbr)  q.set("state_abbr",  params.state_abbr);
+  if (params.county_fips) q.set("county_fips", params.county_fips);
+  if (params.status)      q.set("status",      params.status);
+  if (params.urgency)     q.set("urgency",      params.urgency);
+  if (params.limit)       q.set("limit",        String(params.limit));
+  if (params.skip)        q.set("skip",         String(params.skip));
+  return get<{ count: number; total: number; requests: CommunityRequest[] }>(
+    `/api/requests?${q.toString()}`
+  );
+};
+
+// Update status — used by responder portal
+export const updateRequestStatus = (reference: string, payload: UpdateStatusPayload) =>
+  (async () => {
+    const res = await fetch(`${(import.meta.env.VITE_API_BASE as string) ?? ""}/api/requests/${reference.toUpperCase()}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error(`PATCH /api/requests/${reference}/status → ${res.status}`);
+    return res.json() as Promise<{ status: string; request: CommunityRequest }>;
+  })();
+
+// Stats for dashboard widgets
+export const fetchRequestStats = (stateAbbr: string) =>
+  get<RequestStats>(`/api/requests/stats/${stateAbbr}`);
+
+// ---------------------------------------------------------------------------
+// Status metadata helpers (used in Community and Responder pages)
+// ---------------------------------------------------------------------------
+
+export const STATUS_META: Record<RequestStatus, { label: string; color: string; bg: string }> = {
+  submitted:  { label: "Submitted",           color: "text-blue-700",   bg: "bg-blue-50" },
+  screening:  { label: "Under review",        color: "text-yellow-700", bg: "bg-yellow-50" },
+  verified:   { label: "Verified",            color: "text-indigo-700", bg: "bg-indigo-50" },
+  assigned:   { label: "Assigned",            color: "text-purple-700", bg: "bg-purple-50" },
+  in_transit: { label: "Help on the way",     color: "text-orange-700", bg: "bg-orange-50" },
+  resolved:   { label: "Resolved",            color: "text-emerald-700",bg: "bg-emerald-50" },
+  escalated:  { label: "Escalated",           color: "text-red-700",    bg: "bg-red-50" },
+  closed:     { label: "Closed",              color: "text-gray-600",   bg: "bg-gray-100" },
+};
+
+export const STATUS_TRANSITIONS: Record<RequestStatus, RequestStatus[]> = {
+  submitted:  ["screening", "verified", "escalated", "closed"],
+  screening:  ["verified", "escalated", "closed"],
+  verified:   ["assigned", "escalated", "closed"],
+  assigned:   ["in_transit", "escalated", "closed"],
+  in_transit: ["resolved", "escalated", "closed"],
+  resolved:   [],
+  escalated:  ["assigned", "closed"],
+  closed:     [],
+};

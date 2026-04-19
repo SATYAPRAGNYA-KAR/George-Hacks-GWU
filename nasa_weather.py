@@ -315,26 +315,24 @@ def fetch_firms_anomalies(
 # ---------------------------------------------------------------------------
 
 def fetch_drought_status(state_abbr: str) -> dict[str, Any]:
-    """
-    Return current drought classification for a state from the US Drought Monitor.
-    Returns {state_abbr, none_pct, d0_pct, d1_pct, d2_pct, d3_pct, d4_pct, max_class, as_of}
-    """
-    # USDM state statistics endpoint
     url = f"{USDM_BASE}/StateStatistics/GetDroughtSeverityStatisticsByArea"
-    today = date.today()
-    days_since_tuesday = (today.weekday() - 1) % 7  # Tuesday = weekday 1
-    safe_end = today - timedelta(days=days_since_tuesday + 7)  # one extra week buffer
 
+    today = date.today()
+    days_since_tuesday = (today.weekday() - 1) % 7
+    last_tuesday = today - timedelta(days=days_since_tuesday)
+    range_start  = last_tuesday - timedelta(days=7)
+
+    # USDM requires hyphenated ISO format YYYY-MM-DD, not compact YYYYMMDD
+    # and startdate must be strictly earlier than enddate
     params = {
-        "aoi": state_abbr.upper(),
-        "startdate": safe_end.strftime("%Y-%m-%d"),  # also try hyphenated format
-        "enddate":   safe_end.strftime("%Y-%m-%d"),
+        "aoi":            state_abbr.upper(),
+        "startdate":      range_start.strftime("%Y-%m-%d"),
+        "enddate":        last_tuesday.strftime("%Y-%m-%d"),
         "statisticsType": "1",
     }
-    payload = _get(url, params=params, timeout=10)
 
+    payload = _get(url, params=params, timeout=10)
     if not payload:
-        # Fallback: try the simple CSV endpoint
         return _drought_fallback(state_abbr)
 
     try:
@@ -350,21 +348,21 @@ def fetch_drought_status(state_abbr: str) -> dict[str, Any]:
         d4 = float(latest.get("D4", 0) or 0)
         none_pct = max(0.0, 100.0 - d0 - d1 - d2 - d3 - d4)
 
-        if d4 > 5:   max_class = "D4"
-        elif d3 > 5: max_class = "D3"
-        elif d2 > 10:max_class = "D2"
-        elif d1 > 20:max_class = "D1"
-        elif d0 > 30:max_class = "D0"
-        else:        max_class = "None"
+        if d4 > 5:    max_class = "D4"
+        elif d3 > 5:  max_class = "D3"
+        elif d2 > 10: max_class = "D2"
+        elif d1 > 20: max_class = "D1"
+        elif d0 > 30: max_class = "D0"
+        else:         max_class = "None"
 
         return {
             "state_abbr": state_abbr.upper(),
-            "none_pct": round(none_pct, 1),
+            "none_pct":   round(none_pct, 1),
             "d0_pct": d0, "d1_pct": d1, "d2_pct": d2,
             "d3_pct": d3, "d4_pct": d4,
-            "max_class": max_class,
-            "as_of": latest.get("MapDate", ""),
-            "source": "usdm",
+            "max_class":  max_class,
+            "as_of":      latest.get("MapDate", ""),
+            "source":     "usdm",
         }
     except Exception as e:
         logger.warning("USDM parse failed for %s: %s", state_abbr, e)

@@ -41,6 +41,9 @@ from typing import Any, Dict, List, Optional
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Path setup
 _root    = Path(__file__).parent
@@ -57,6 +60,7 @@ from crop_health import (
 from backend.alerts_api      import router as alerts_router
 from backend.disruptions_api import router as disruptions_router
 from state_fpi_api           import router as fpi_router
+from community_requests_api import router as requests_router
 from db                      import close_db
 
 app = FastAPI(
@@ -77,6 +81,7 @@ app.add_middleware(
 app.include_router(alerts_router,      prefix="/api")
 app.include_router(disruptions_router, prefix="/api")
 app.include_router(fpi_router,         prefix="/api")
+app.include_router(requests_router, prefix="/api")
 
 
 @app.on_event("shutdown")

@@ -3,22 +3,13 @@ db.py — MongoDB async client for RootBridge
 
 Collections
 -----------
-  users           — onboarded platform users
-  risk_cache      — per-state/county risk scores (TTL-indexed, 6h)
-  analysis_cache  — crop-health analysis results per region
-  alerts_log      — alert history with timestamps
-  signal_reports  — community-submitted ground-truth signals
-
-Connection
-----------
-Set MONGODB_URI in your .env (or environment).
-Defaults to mongodb://localhost:27017 for local dev.
-
-Usage
------
-  from db import get_db, Collections
-  db = await get_db()
-  await db[Collections.USERS].insert_one({...})
+  users               — onboarded platform users
+  risk_cache          — per-state/county risk scores (TTL 6h)
+  analysis_cache      — crop-health analysis results per region
+  alerts_log          — alert history with timestamps
+  signal_reports      — community ground-truth signals
+  community_requests  — food access requests with full status lifecycle
+  weights_log         — Gemini-suggested weight snapshots per state
 """
 
 from __future__ import annotations
@@ -30,7 +21,6 @@ from typing import Any
 
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import ASCENDING, DESCENDING, IndexModel
-
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -44,12 +34,13 @@ _client: AsyncIOMotorClient | None = None
 
 
 class Collections:
-    USERS          = "users"
-    RISK_CACHE     = "risk_cache"
-    ANALYSIS_CACHE = "analysis_cache"
-    ALERTS_LOG     = "alerts_log"
-    SIGNAL_REPORTS = "signal_reports"
-    WEIGHTS_LOG    = "weights_log"   # Gemini-suggested weight snapshots per state
+    USERS               = "users"
+    RISK_CACHE          = "risk_cache"
+    ANALYSIS_CACHE      = "analysis_cache"
+    ALERTS_LOG          = "alerts_log"
+    SIGNAL_REPORTS      = "signal_reports"
+    COMMUNITY_REQUESTS  = "community_requests"
+    WEIGHTS_LOG         = "weights_log"
 
 
 async def get_db() -> AsyncIOMotorDatabase:
@@ -69,9 +60,7 @@ async def close_db() -> None:
 
 
 async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
-    """Create all indexes idempotently on startup."""
     try:
-        # users — unique email, state filter
         await db[Collections.USERS].create_indexes([
             IndexModel([("email", ASCENDING)], unique=True),
             IndexModel([("state_abbr", ASCENDING)]),
@@ -79,34 +68,39 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
             IndexModel([("created_at", DESCENDING)]),
         ])
 
-        # risk_cache — keyed by state+county, TTL 6 hours
         await db[Collections.RISK_CACHE].create_indexes([
             IndexModel([("state_abbr", ASCENDING), ("county_fips", ASCENDING)], unique=True),
             IndexModel([("state_abbr", ASCENDING)]),
-            # TTL index: documents expire 6 hours after cached_at
             IndexModel([("cached_at", ASCENDING)], expireAfterSeconds=21600),
         ])
 
-        # analysis_cache — keyed by region_id, TTL 6 hours
         await db[Collections.ANALYSIS_CACHE].create_indexes([
             IndexModel([("region_id", ASCENDING)], unique=True),
             IndexModel([("cached_at", ASCENDING)], expireAfterSeconds=21600),
         ])
 
-        # alerts_log — query by state, level, timestamp
         await db[Collections.ALERTS_LOG].create_indexes([
             IndexModel([("state_abbr", ASCENDING), ("generated_at", DESCENDING)]),
             IndexModel([("level", ASCENDING)]),
             IndexModel([("community_id", ASCENDING)]),
         ])
 
-        # signal_reports — community-submitted
         await db[Collections.SIGNAL_REPORTS].create_indexes([
             IndexModel([("state_abbr", ASCENDING), ("county_fips", ASCENDING)]),
             IndexModel([("created_at", DESCENDING)]),
         ])
 
-        # weights_log — Gemini-suggested weights per state
+        # Community requests — full lifecycle tracking
+        await db[Collections.COMMUNITY_REQUESTS].create_indexes([
+            IndexModel([("reference", ASCENDING)], unique=True),
+            IndexModel([("state_abbr", ASCENDING), ("status", ASCENDING)]),
+            IndexModel([("county_fips", ASCENDING)]),
+            IndexModel([("status", ASCENDING)]),
+            IndexModel([("urgency", ASCENDING)]),
+            IndexModel([("created_at", DESCENDING)]),
+            IndexModel([("contact_email", ASCENDING)]),
+        ])
+
         await db[Collections.WEIGHTS_LOG].create_indexes([
             IndexModel([("state_abbr", ASCENDING), ("created_at", DESCENDING)]),
         ])
@@ -117,7 +111,7 @@ async def _ensure_indexes(db: AsyncIOMotorDatabase) -> None:
 
 
 # ---------------------------------------------------------------------------
-# User model helpers
+# User model
 # ---------------------------------------------------------------------------
 
 def new_user(
@@ -129,10 +123,6 @@ def new_user(
     org_name: str | None = None,
     phone: str | None = None,
 ) -> dict[str, Any]:
-    """
-    Build a new user document. `role` is one of:
-      public | community | responder | coordinator | government | admin
-    """
     now = datetime.now(timezone.utc)
     return {
         "email":       email.lower().strip(),
@@ -145,7 +135,81 @@ def new_user(
         "created_at":  now,
         "updated_at":  now,
         "active":      True,
-        "alerts_opt_in": True,   # receive SMS/voice alerts by default
+        "alerts_opt_in": True,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Community request model
+# ---------------------------------------------------------------------------
+
+# Valid status transitions:
+#   submitted → screening → verified → assigned → in_transit → resolved
+#   any → escalated
+#   any → closed  (manual close without resolution)
+VALID_STATUSES = [
+    "submitted", "screening", "verified", "assigned",
+    "in_transit", "resolved", "escalated", "closed",
+]
+
+STATUS_TRANSITIONS: dict[str, list[str]] = {
+    "submitted":  ["screening", "verified", "escalated", "closed"],
+    "screening":  ["verified", "escalated", "closed"],
+    "verified":   ["assigned", "escalated", "closed"],
+    "assigned":   ["in_transit", "escalated", "closed"],
+    "in_transit": ["resolved", "escalated", "closed"],
+    "resolved":   [],
+    "escalated":  ["assigned", "closed"],
+    "closed":     [],
+}
+
+STATUS_LABELS: dict[str, str] = {
+    "submitted":  "Submitted",
+    "screening":  "Under review",
+    "verified":   "Verified",
+    "assigned":   "Assigned to responder",
+    "in_transit": "Help on the way",
+    "resolved":   "Resolved",
+    "escalated":  "Escalated",
+    "closed":     "Closed",
+}
+
+
+def new_community_request(
+    reference: str,
+    state_abbr: str,
+    county_fips: str,
+    city: str,
+    zip_code: str,
+    request_type: str,
+    urgency: str,
+    household_size: int,
+    description: str,
+    contact: str | None = None,
+    contact_email: str | None = None,
+) -> dict[str, Any]:
+    now = datetime.now(timezone.utc)
+    return {
+        "reference":      reference,
+        "state_abbr":     state_abbr.upper(),
+        "county_fips":    county_fips,
+        "city":           city,
+        "zip":            zip_code,
+        "type":           request_type,
+        "urgency":        urgency,
+        "household_size": household_size,
+        "description":    description,
+        "contact":        contact,
+        "contact_email":  contact_email,
+        "status":         "submitted",
+        "status_history": [
+            {"status": "submitted", "timestamp": now.isoformat(), "note": "Request submitted by community member."}
+        ],
+        "assigned_org":    None,
+        "assigned_org_name": None,
+        "resolution_note": None,
+        "created_at":      now,
+        "updated_at":      now,
     }
 
 

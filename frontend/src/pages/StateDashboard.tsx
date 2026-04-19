@@ -32,14 +32,31 @@ const TRIGGER_COLOR: Record<string, string> = {
   warning: "text-orange-500", action: "text-red-500", critical: "text-red-700",
 };
 
+// const DroughtBadge = ({ cls }: { cls: string }) => {
+//   const colors: Record<string, string> = {
+//     None: "bg-emerald-100 text-emerald-700",
+//     D0: "bg-yellow-100 text-yellow-700", D1: "bg-orange-100 text-orange-700",
+//     D2: "bg-orange-200 text-orange-800", D3: "bg-red-200 text-red-800",
+//     D4: "bg-red-300 text-red-900", unknown: "bg-muted text-muted-foreground",
+//   };
+//   return <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${colors[cls] ?? colors.unknown}`}>{cls === "None" ? "No drought" : cls}</span>;
+// };
 const DroughtBadge = ({ cls }: { cls: string }) => {
   const colors: Record<string, string> = {
-    None: "bg-emerald-100 text-emerald-700",
-    D0: "bg-yellow-100 text-yellow-700", D1: "bg-orange-100 text-orange-700",
-    D2: "bg-orange-200 text-orange-800", D3: "bg-red-200 text-red-800",
-    D4: "bg-red-300 text-red-900", unknown: "bg-muted text-muted-foreground",
+    None:    "bg-emerald-100 text-emerald-700",  // ← add this
+    D0: "bg-yellow-100 text-yellow-700",
+    D1: "bg-orange-100 text-orange-700",
+    D2: "bg-orange-200 text-orange-800",
+    D3: "bg-red-200 text-red-800",
+    D4: "bg-red-300 text-red-900",
+    unknown: "bg-muted text-muted-foreground",
   };
-  return <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${colors[cls] ?? colors.unknown}`}>{cls === "None" ? "No drought" : cls}</span>;
+  const label = cls === "None" ? "No drought" : cls === "unknown" ? "No data" : cls;
+  return (
+    <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${colors[cls] ?? colors.unknown}`}>
+      {label}
+    </span>
+  );
 };
 
 const WeatherStrip = ({ weather }: { weather: WeatherSnapshot }) => (
@@ -185,15 +202,33 @@ const StateDashboard = () => {
   const alerts = triggers.filter((t) => ["warning", "action", "critical"].includes(t.thresholdCrossed)).length
     + (stateFPI && ["warning","action","critical"].includes(stateFPI.trigger) ? 1 : 0);
 
+  // const ranking = useMemo(() => {
+  //   return counties.map((c) => {
+  //     const cs   = countyScore(c.fips)!;
+  //     return { fips: c.fips, name: c.name, total: cs?.total ?? 30, level: cs?.level ?? "prepared", pop: c.population };
+  //   })
+  //     .filter((r) => r.name.toLowerCase().includes(q.toLowerCase()))
+  //     .filter((r) => trig === "all" ? true : r.level === trig)
+  //     .sort((a, b) => b.total - a.total);
+  // }, [counties, q, trig]);
   const ranking = useMemo(() => {
     return counties.map((c) => {
-      const cs   = countyScore(c.fips)!;
-      return { fips: c.fips, name: c.name, total: cs?.total ?? 30, level: cs?.level ?? "prepared", pop: c.population };
+      const cs = countyScore(c.fips);
+      // Prefer live backend score if available for this county
+      // (populated when user clicks a county and the query runs)
+      const backendScore = countyFPI?.county_fips === c.fips
+        ? countyFPI.risk_score
+        : null;
+      const total = backendScore ?? cs?.total ?? 30;
+      const level = backendScore
+        ? countyFPI!.trigger
+        : cs?.level ?? "prepared";
+      return { fips: c.fips, name: c.name, total, level, pop: c.population };
     })
       .filter((r) => r.name.toLowerCase().includes(q.toLowerCase()))
       .filter((r) => trig === "all" ? true : r.level === trig)
       .sort((a, b) => b.total - a.total);
-  }, [counties, q, trig]);
+  }, [counties, q, trig, countyFPI]);
 
   if (!stateInfo) {
     return <AppShell><Card><CardContent className="p-6">Unknown state.</CardContent></Card></AppShell>;
