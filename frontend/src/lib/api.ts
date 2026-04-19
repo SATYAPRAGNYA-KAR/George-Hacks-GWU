@@ -56,7 +56,7 @@ export interface StateFPISummary {
   error?: string;
 }
 
-export interface StateFPIDetail extends StateFPISummary {
+export interface BackendStateFPIDetail extends StateFPISummary {
   state_weights: Record<string, number>;
   reasoning: string;
   recommended_actions: string[];
@@ -65,7 +65,7 @@ export interface StateFPIDetail extends StateFPISummary {
   fema_declarations: number;
 }
 
-export interface CountyFPIDetail {
+export interface BackendCountyFPIDetail {
   state_abbr: string;
   county_fips: string;
   county_name: string;
@@ -179,7 +179,7 @@ export const fetchAllStatesFPI = (refresh = false) =>
   );
 
 export const fetchStateFPI = (stateAbbr: string, refresh = false) =>
-  get<StateFPIDetail>(
+  get<BackendStateFPIDetail>(
     `/api/fpi/state/${stateAbbr}${refresh ? "?refresh=true" : ""}`
   );
 
@@ -189,7 +189,7 @@ export const fetchCountyFPI = (
   countyName = "",
   refresh = false,
 ) =>
-  get<CountyFPIDetail>(
+  get<BackendCountyFPIDetail>(
     `/api/fpi/county/${stateAbbr}/${countyFips}` +
     `?county_name=${encodeURIComponent(countyName)}` +
     `${refresh ? "&refresh=true" : ""}`

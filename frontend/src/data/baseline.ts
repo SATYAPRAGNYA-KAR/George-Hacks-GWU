@@ -128,6 +128,24 @@ const REAL_COUNTY_NAMES: Record<string, string[]> = {
 
 const clamp01 = (v: number) => Math.max(0, Math.min(100, v));
 
+// Cache synthetic county names so getCountyFPIDetail can resolve them.
+// Built lazily once per state on first access.
+const SYNTHETIC_NAME_CACHE = new Map<string, string>();   // fips → name
+const SYNTHETIC_POP_CACHE  = new Map<string, number>();   // fips → population
+
+function ensureSyntheticCached(stateAbbr: string) {
+  const stateInfo = US_STATES.find((s) => s.abbr === stateAbbr);
+  if (!stateInfo) return;
+  const key = `synth:${stateAbbr}:done`;
+  if (SYNTHETIC_NAME_CACHE.has(key)) return;
+  SYNTHETIC_NAME_CACHE.set(key, "");  // mark as cached
+  const counties = syntheticCountiesForState(stateAbbr);
+  counties.forEach((c) => {
+    SYNTHETIC_NAME_CACHE.set(c.fips, c.name);
+    SYNTHETIC_POP_CACHE.set(c.fips, c.population);
+  });
+}
+
 /** Generate a synthetic county for any state that has no seeded counties. */
 export function syntheticCountiesForState(stateAbbr: string): {
   fips: string;
@@ -169,6 +187,7 @@ export function syntheticCountiesForState(stateAbbr: string): {
 
 /** Build a CountyFPIDetail for any FIPS, using seeded data if available. */
 export function getCountyFPIDetail(fips: string, stateAbbr: string, communityAdjustment = 0): CountyFPIDetail {
+  ensureSyntheticCached(stateAbbr);
   const metrics = generateCountyMetrics(fips, stateAbbr);
 
   const seeded = ALL_COUNTIES.find((c) => c.fips === fips) as any;
@@ -198,8 +217,8 @@ export function getCountyFPIDetail(fips: string, stateAbbr: string, communityAdj
   return {
     fips,
     stateAbbr,
-    name:       seeded?.name ?? `County ${fips}`,
-    population: seeded?.population ?? 50000,
+    name:       seeded?.name ?? SYNTHETIC_NAME_CACHE.get(fips) ?? `County ${fips}`,
+    population: seeded?.population ?? SYNTHETIC_POP_CACHE.get(fips) ?? 50000,
     metrics,
     components,
     total,

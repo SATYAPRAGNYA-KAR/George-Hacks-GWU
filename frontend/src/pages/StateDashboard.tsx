@@ -22,28 +22,19 @@ import {
   fetchStateFPI,
   fetchWeather,
   fetchCountyFPI,
-  type StateFPIDetail,
+  type BackendStateFPIDetail as StateFPIDetail,
   type WeatherSnapshot,
-  type CountyFPIDetail,
 } from "@/lib/api";
+import { SupplyCorridorPanel } from "@/components/SupplyCorridorPanel";
 
 const TRIGGER_COLOR: Record<string, string> = {
   prepared: "text-emerald-600", watch: "text-yellow-600",
   warning: "text-orange-500", action: "text-red-500", critical: "text-red-700",
 };
 
-// const DroughtBadge = ({ cls }: { cls: string }) => {
-//   const colors: Record<string, string> = {
-//     None: "bg-emerald-100 text-emerald-700",
-//     D0: "bg-yellow-100 text-yellow-700", D1: "bg-orange-100 text-orange-700",
-//     D2: "bg-orange-200 text-orange-800", D3: "bg-red-200 text-red-800",
-//     D4: "bg-red-300 text-red-900", unknown: "bg-muted text-muted-foreground",
-//   };
-//   return <span className={`rounded px-1.5 py-0.5 text-xs font-medium ${colors[cls] ?? colors.unknown}`}>{cls === "None" ? "No drought" : cls}</span>;
-// };
 const DroughtBadge = ({ cls }: { cls: string }) => {
   const colors: Record<string, string> = {
-    None:    "bg-emerald-100 text-emerald-700",  // ← add this
+    None:    "bg-emerald-100 text-emerald-700",
     D0: "bg-yellow-100 text-yellow-700",
     D1: "bg-orange-100 text-orange-700",
     D2: "bg-orange-200 text-orange-800",
@@ -76,8 +67,9 @@ const WeatherStrip = ({ weather }: { weather: WeatherSnapshot }) => (
         <Droplets className="h-3.5 w-3.5 text-blue-500 shrink-0" />
         <span className="text-muted-foreground">Drought</span>
         <DroughtBadge cls={weather.drought?.max_class ?? "unknown"} />
-        {weather.drought?.d2_pct > 10 && (
-          <span className="text-muted-foreground">{weather.drought.d2_pct.toFixed(0)}% in D2+</span>
+        {/* FIX 2: removed stray "// AFTER" text that was sitting as raw content in JSX */}
+        {(weather.drought?.d2_pct ?? 0) > 10 && (
+          <span className="text-muted-foreground">{weather.drought!.d2_pct.toFixed(0)}% in D2+</span>
         )}
       </div>
       {weather.active_storms?.length > 0 && (
@@ -111,6 +103,7 @@ const WeatherStrip = ({ weather }: { weather: WeatherSnapshot }) => (
   </Card>
 );
 
+// FIX 1 (continued): StateFPIDetail is now properly imported above, so this compiles correctly
 const GeminiWeightsCard = ({ fpi }: { fpi: StateFPIDetail }) => {
   const weights = fpi.state_weights ?? {};
   const entries = Object.entries(weights).sort((a, b) => b[1] - a[1]);
@@ -204,31 +197,32 @@ const StateDashboard = () => {
 
   // const ranking = useMemo(() => {
   //   return counties.map((c) => {
-  //     const cs   = countyScore(c.fips)!;
-  //     return { fips: c.fips, name: c.name, total: cs?.total ?? 30, level: cs?.level ?? "prepared", pop: c.population };
+  //     const cs = countyScore(c.fips);
+  //     const backendScore = countyFPI?.county_fips === c.fips
+  //       ? countyFPI.risk_score
+  //       : null;
+  //     const total = backendScore ?? cs?.total ?? 30;
+  //     const level = backendScore
+  //       ? countyFPI!.trigger
+  //       : cs?.level ?? "prepared";
+  //     return { fips: c.fips, name: c.name, total, level, pop: c.population };
   //   })
   //     .filter((r) => r.name.toLowerCase().includes(q.toLowerCase()))
   //     .filter((r) => trig === "all" ? true : r.level === trig)
   //     .sort((a, b) => b.total - a.total);
-  // }, [counties, q, trig]);
+  // }, [counties, q, trig, countyFPI]);
+  // AFTER - ranking uses stable baseline scores only, never re-sorts on fetch
   const ranking = useMemo(() => {
     return counties.map((c) => {
       const cs = countyScore(c.fips);
-      // Prefer live backend score if available for this county
-      // (populated when user clicks a county and the query runs)
-      const backendScore = countyFPI?.county_fips === c.fips
-        ? countyFPI.risk_score
-        : null;
-      const total = backendScore ?? cs?.total ?? 30;
-      const level = backendScore
-        ? countyFPI!.trigger
-        : cs?.level ?? "prepared";
+      const total = cs?.total ?? 30;
+      const level = cs?.level ?? "prepared";
       return { fips: c.fips, name: c.name, total, level, pop: c.population };
     })
       .filter((r) => r.name.toLowerCase().includes(q.toLowerCase()))
       .filter((r) => trig === "all" ? true : r.level === trig)
       .sort((a, b) => b.total - a.total);
-  }, [counties, q, trig, countyFPI]);
+  }, [counties, q, trig]);  // ← countyFPI removed from deps entirely
 
   if (!stateInfo) {
     return <AppShell><Card><CardContent className="p-6">Unknown state.</CardContent></Card></AppShell>;
@@ -290,6 +284,15 @@ const StateDashboard = () => {
             <GeminiWeightsCard fpi={stateFPI} />
           </div>
         )}
+
+        <SupplyCorridorPanel
+          stateAbbr={stateAbbr}
+          shockScores={
+            weather
+              ? { default: weather.shock_score }
+              : {}
+          }
+        />
 
         <div className="grid gap-5 lg:grid-cols-3">
           <div className="space-y-5 lg:col-span-2">

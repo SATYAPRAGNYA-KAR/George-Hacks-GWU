@@ -689,7 +689,8 @@ export function stateFPI(abbr: string) {
   const recentSignals = store.signalReports.filter(
     (s) => s.stateAbbr === abbr && new Date(s.createdAt).getTime() > Date.now() - 24 * 3_600_000,
   ).length;
-  return getStateFPIDetail(abbr, countyFPIs, { openIncidents, communitySignals24h: recentSignals });
+  // return getStateFPIDetail(abbr, countyFPIs, { openIncidents, communitySignals24h: recentSignals });
+  return getStateFPIDetail(abbr);
 }
 
 export function generateTrend(fips: string, days = 14): { date: string; score: number }[] {

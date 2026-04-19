@@ -10,10 +10,29 @@ import { getCountyFPIDetail } from "@/data/baseline";
 import { US_STATES } from "@/data/states";
 import { Activity, AlertTriangle, Boxes, HeartHandshake, Sparkles, Truck, Users } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
+import { computeBurnRate, aggregateBurnRate } from "@/lib/burnRate";
+import { Package } from "lucide-react";
+import { coldChainLabel } from "@/lib/coldChain";
+import { Snowflake } from "lucide-react";
 
 export const CountyDetailPanel = ({ fips }: { fips: string }) => {
   const requests = useAppStore((s) => s.requests.filter((r) => r.countyFips === fips));
   const orgs     = useAppStore((s) => s.organizations.filter((o) => o.countiesCovered.includes(fips)));
+  const burnRates = orgs.map((org) => {
+    const openReqs = requests.filter(
+      (r) => !["closed", "resolved", "failed_delivery"].includes(r.status)
+    ).length;
+    const surge = useAppStore.getState().incidents.some(
+      (i) => i.countyFips === fips && i.status !== "closed"
+    );
+    // {org.coldChain && (
+    //   <span className="inline-flex items-center gap-0.5 rounded bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700 border border-blue-200">
+    //     <Snowflake className="h-2.5 w-2.5" /> Cold chain
+    //   </span>
+    // )}
+    return computeBurnRate(org, openReqs, 3.5, surge);
+  });
+  const aggregate = aggregateBurnRate(burnRates);
   const triggers = useAppStore((s) => s.triggers.filter((t) => t.countyFips === fips));
   const weights  = useAppStore((s) => s.weights);
 
@@ -37,8 +56,11 @@ export const CountyDetailPanel = ({ fips }: { fips: string }) => {
     seedRich: false,
   };
 
-  const total   = detail.total;
-  const level   = triggerForScore(total);
+  // const total   = detail.total;
+  // const level   = triggerForScore(total);
+  const cs      = countyScore(fips);   // countyScore is already imported
+  const total   = cs?.total ?? detail.total;
+  const level   = cs?.level ?? triggerForScore(total);
   const meta    = TRIGGER_META[level];
   const trend   = generateTrend(fips, 14);
   const recs    = recommendationsForCounty(fips, weights);
@@ -165,6 +187,21 @@ export const CountyDetailPanel = ({ fips }: { fips: string }) => {
               <HeartHandshake className="h-3 w-3" />Responder capacity
             </div>
             <p className="mt-1 text-2xl font-bold tabular-nums">{(totalStock / 1000).toFixed(0)}k lbs</p>
+            {orgs.length > 0 && aggregate.minDaysOfSupply !== Infinity && (
+              <div className={`mt-2 flex items-center gap-2 rounded p-2 text-xs ${
+                aggregate.status === "critical"
+                  ? "bg-red-50 text-red-700"
+                  : aggregate.status === "warning"
+                  ? "bg-orange-50 text-orange-700"
+                  : "bg-emerald-50 text-emerald-700"
+              }`}>
+                <Package className="h-3.5 w-3.5 shrink-0" />
+                <span>
+                  Projected supply: <strong>{aggregate.minDaysOfSupply} days</strong>
+                  {" "}· {aggregate.totalDailyLbs.toLocaleString()} lbs/day burn rate
+                </span>
+              </div>
+            )}
             <p className="text-[10px] text-muted-foreground">
               ${totalVouchers.toLocaleString()} vouchers · {orgs.length} orgs
             </p>
