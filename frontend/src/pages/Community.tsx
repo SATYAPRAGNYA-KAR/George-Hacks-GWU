@@ -70,6 +70,7 @@ const StatusTimeline = ({ req }: { req: CommunityRequest }) => {
   );
 };
 
+
 // ---------------------------------------------------------------------------
 // Main Community page
 // ---------------------------------------------------------------------------
@@ -114,6 +115,8 @@ const Community = () => {
   const counties  = getCountiesForState(stateAbbr);
   const pCounties = getCountiesForState(pState);
 
+  const addRequest = useAppStore((s) => s.addRequest);
+
   // Submit mutation — saves to MongoDB
   const submitMutation = useMutation({
     mutationFn: (payload: SubmitRequestPayload) => submitCommunityRequest(payload),
@@ -121,6 +124,19 @@ const Community = () => {
       setSubmitted({ ref: res.reference });
       toast.success(`Request submitted · Ref ${res.reference}`);
       queryClient.invalidateQueries({ queryKey: ["requests"] });
+
+      // ADD THIS — write into Zustand so Responder sees it immediately
+      addRequest({
+        stateAbbr:     stateAbbr,
+        countyFips:    countyFips,
+        city:          city.trim(),
+        zip:           zip.trim(),
+        type,
+        urgency:       urgency as any,
+        householdSize: Number(householdSize),
+        description:   description.trim(),
+        contact:       contact.trim() || undefined,
+      });
     },
     onError: (err: Error) => {
       toast.error(`Submission failed: ${err.message}`);

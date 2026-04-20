@@ -12,39 +12,80 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAppStore, getCountyByFips } from "@/store/appStore";
 import { US_STATES } from "@/data/states";
 import { toast } from "sonner";
-import { AlertTriangle, ShieldCheck, Truck, Snowflake, DollarSign } from "lucide-react";
+import { AlertTriangle, ShieldCheck, Truck, Snowflake, DollarSign, RefreshCw } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
 import type { RequestStatus, Urgency } from "@/types/foodready";
 import { SupplyCorridorPanel } from "@/components/SupplyCorridorPanel";
 import { BurnRateCard } from "@/components/BurnRateCard";
 import { LogisticsAssignmentForm } from "@/components/LogisticsAssignmentForm";
+import { useQuery } from "@tanstack/react-query";
+import { fetchRequests } from "@/lib/api";
+import type { CommunityRequest as BackendRequest } from "@/lib/api";
 
 const urgencyOrder: Record<Urgency, number> = { urgent_24h: 0, moderate_week: 1, low_general: 2 };
 
+// Normalise a backend (snake_case) request into the camelCase shape the UI expects.
+// If it's already camelCase (local Zustand seed) this is a no-op.
+function normalise(r: any) {
+  return {
+    ...r,
+    stateAbbr:    r.stateAbbr    ?? r.state_abbr    ?? "",
+    countyFips:   r.countyFips   ?? r.county_fips   ?? "",
+    createdAt:    r.createdAt    ?? r.created_at     ?? new Date().toISOString(),
+    updatedAt:    r.updatedAt    ?? r.updated_at     ?? new Date().toISOString(),
+    householdSize: r.householdSize ?? r.household_size ?? 0,
+    resolutionNote: r.resolutionNote ?? r.resolution_note ?? undefined,
+    claimedBy:    r.claimedBy    ?? r.claimed_by    ?? undefined,
+  };
+}
+
 const Responder = () => {
   const role = useAppStore((s) => s.role);
-  const requests = useAppStore((s) => s.requests);
+  const localRequests = useAppStore((s) => s.requests);
   const orgs = useAppStore((s) => s.organizations);
   const triggers = useAppStore((s) => s.triggers);
   const claim = useAppStore((s) => s.claimRequest);
   const resolve = useAppStore((s) => s.resolveRequest);
   const upsert = useAppStore((s) => s.upsertOrgCapacity);
 
+  // ── All useState BEFORE any useQuery so hook order is stable ──
   const [orgId, setOrgId] = useState(orgs[0]?.id ?? "");
   const [status, setStatus] = useState<RequestStatus | "all">("all");
   const [stateFilter, setStateFilter] = useState<string>("all");
   const [resolutionInputs, setResolutionInputs] = useState<Record<string, string>>({});
-
-  // ── FIX: hoisted here at component top level, not inside JSX ──
   const [logisticsOpen, setLogisticsOpen] = useState<string | null>(null);
+  const [name, setName] = useState(() => orgs[0]?.name ?? "");
+  const [stockLbs, setStockLbs] = useState(() => orgs[0]?.foodStockLbs ?? 0);
+  const [vouchers, setVouchers] = useState(() => orgs[0]?.voucherCapacityUsd ?? 0);
+  const [trucks, setTrucks] = useState(() => orgs[0]?.transportTrucks ?? 0);
+  const [coldChain, setColdChain] = useState(() => orgs[0]?.coldChain ?? false);
+  const [notes, setNotes] = useState(() => orgs[0]?.notes ?? "");
+
+  // ── useQuery AFTER all useState ──
+  const { data: backendData, isLoading, refetch } = useQuery({
+    queryKey: ["requests", stateFilter, status],
+    queryFn: () => fetchRequests({
+      state_abbr: stateFilter !== "all" ? stateFilter : undefined,
+      status: status !== "all" ? status as any : undefined,
+      limit: 100,
+    }),
+    staleTime: 30_000,
+    retry: 1,
+  });
+
+  // Normalise backend records to camelCase; fall back to local seed if backend offline
+  const requests = useMemo(() => {
+    const raw = backendData?.requests ?? localRequests;
+    return raw.map(normalise);
+  }, [backendData, localRequests]);
 
   const filtered = useMemo(() => {
     return requests
-      .filter((r) => (status === "all" ? true : r.status === status))
-      .filter((r) => (stateFilter === "all" ? true : r.stateAbbr === stateFilter))
+      .filter((r) => status === "all" ? true : r.status === status)
+      .filter((r) => stateFilter === "all" ? true : r.stateAbbr === stateFilter)
       .sort(
         (a, b) =>
-          urgencyOrder[a.urgency] - urgencyOrder[b.urgency] ||
+          (urgencyOrder[a.urgency as Urgency] ?? 99) - (urgencyOrder[b.urgency as Urgency] ?? 99) ||
           +new Date(b.createdAt) - +new Date(a.createdAt),
       );
   }, [requests, status, stateFilter]);
@@ -55,14 +96,6 @@ const Responder = () => {
   const activeAlerts = triggers.filter((t) =>
     ["action", "critical"].includes(t.thresholdCrossed),
   );
-
-  // Capacity form state
-  const [name, setName] = useState(myOrg?.name ?? "");
-  const [stockLbs, setStockLbs] = useState(myOrg?.foodStockLbs ?? 0);
-  const [vouchers, setVouchers] = useState(myOrg?.voucherCapacityUsd ?? 0);
-  const [trucks, setTrucks] = useState(myOrg?.transportTrucks ?? 0);
-  const [coldChain, setColdChain] = useState(myOrg?.coldChain ?? false);
-  const [notes, setNotes] = useState(myOrg?.notes ?? "");
 
   const saveCapacity = () => {
     if (!myOrg) return;
@@ -90,6 +123,10 @@ const Responder = () => {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Button size="sm" variant="outline" onClick={() => refetch()} className="h-8 text-xs gap-1">
+              <RefreshCw className="h-3 w-3" />
+              {isLoading ? "Loading…" : "Refresh"}
+            </Button>
             <Label className="text-xs">Acting as</Label>
             <Select value={orgId} onValueChange={setOrgId}>
               <SelectTrigger className="h-8 w-[260px] text-xs">
@@ -134,10 +171,7 @@ const Responder = () => {
                   return (
                     <li key={a.id} className="flex items-center justify-between gap-2">
                       <span>
-                        <strong>
-                          {c?.name}, {a.stateAbbr}
-                        </strong>{" "}
-                        · {a.recommendedAction}
+                        <strong>{c?.name}, {a.stateAbbr}</strong> · {a.recommendedAction}
                       </span>
                       <span className="text-xs text-muted-foreground">
                         {formatDistanceToNow(new Date(a.timestamp), { addSuffix: true })}
@@ -153,7 +187,14 @@ const Responder = () => {
         {/* ── Tabs ── */}
         <Tabs defaultValue="feed">
           <TabsList>
-            <TabsTrigger value="feed">Live request feed</TabsTrigger>
+            <TabsTrigger value="feed">
+              Live request feed
+              {backendData && (
+                <span className="ml-2 rounded-full bg-emerald-100 px-1.5 text-[10px] text-emerald-700">
+                  {backendData.total} total
+                </span>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="capacity">Declare capacity</TabsTrigger>
             <TabsTrigger value="impact">Impact log</TabsTrigger>
             <TabsTrigger value="corridors">Supply corridors</TabsTrigger>
@@ -163,15 +204,15 @@ const Responder = () => {
           <TabsContent value="feed" className="mt-4 space-y-3">
             {/* Filters */}
             <div className="flex flex-wrap gap-2">
-              {(["all", "open", "claimed", "resolved", "escalated"] as const).map((s) => (
+              {(["all", "submitted", "screening", "verified", "assigned", "in_transit", "resolved", "escalated"] as const).map((s) => (
                 <Button
                   key={s}
                   size="sm"
                   variant={status === s ? "secondary" : "ghost"}
                   className="h-8 text-xs capitalize"
-                  onClick={() => setStatus(s)}
+                  onClick={() => setStatus(s as any)}
                 >
-                  {s}
+                  {s.replace(/_/g, " ")}
                 </Button>
               ))}
               <div className="ml-auto">
@@ -191,9 +232,18 @@ const Responder = () => {
               </div>
             </div>
 
+            {isLoading && (
+              <Card>
+                <CardContent className="p-6 text-center text-sm text-muted-foreground">
+                  <RefreshCw className="inline h-3 w-3 animate-spin mr-2" />
+                  Loading requests from server…
+                </CardContent>
+              </Card>
+            )}
+
             {/* Request cards */}
             <div className="space-y-2">
-              {filtered.length === 0 && (
+              {!isLoading && filtered.length === 0 && (
                 <Card>
                   <CardContent className="p-6 text-center text-sm text-muted-foreground">
                     No requests match the filters.
@@ -205,14 +255,12 @@ const Responder = () => {
                 const county = getCountyByFips(r.countyFips);
                 const isLogisticsOpen = logisticsOpen === r.id;
                 const canAssignLogistics =
-                  role === "coordinator" ||
-                  role === "government" ||
-                  role === "logistics";
+                  role === "coordinator" || role === "government" || role === "logistics";
 
                 return (
-                  <Card key={r.id}>
+                  <Card key={r.id ?? r.reference}>
                     <CardContent className="p-4">
-                      {/* ── Top row: metadata + date ── */}
+                      {/* ── Top row ── */}
                       <div className="flex flex-wrap items-start justify-between gap-2">
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
@@ -228,10 +276,12 @@ const Responder = () => {
                             >
                               {r.urgency.replace(/_/g, " ")}
                             </Badge>
-                            <Badge className="text-[10px] capitalize">{r.status}</Badge>
+                            <Badge className="text-[10px] capitalize">
+                              {r.status.replace(/_/g, " ")}
+                            </Badge>
                           </div>
                           <p className="mt-1.5 text-sm font-medium">
-                            {county?.name}, {r.stateAbbr} · {r.city || "—"} {r.zip}
+                            {county?.name ?? r.countyFips}, {r.stateAbbr} · {r.city || "—"} {r.zip}
                           </p>
                           <p className="mt-1 text-sm text-muted-foreground">{r.description}</p>
                           {r.resolutionNote && (
@@ -246,9 +296,9 @@ const Responder = () => {
                         </div>
                       </div>
 
-                      {/* ── Action buttons (claim / resolve) ── */}
+                      {/* ── Action buttons ── */}
                       <div className="mt-3 flex flex-wrap items-center gap-2">
-                        {r.status === "open" && (
+                        {r.status === "submitted" && (
                           <Button
                             size="sm"
                             onClick={() => {
@@ -259,7 +309,7 @@ const Responder = () => {
                             Claim
                           </Button>
                         )}
-                        {r.status === "claimed" && r.claimedBy === orgId && (
+                        {r.status === "assigned" && r.claimedBy === orgId && (
                           <>
                             <Input
                               placeholder="Resolution note…"
@@ -273,8 +323,7 @@ const Responder = () => {
                               size="sm"
                               variant="secondary"
                               onClick={() => {
-                                const note =
-                                  resolutionInputs[r.id]?.trim() || "Resolved by responder.";
+                                const note = resolutionInputs[r.id]?.trim() || "Resolved by responder.";
                                 resolve(r.id, note);
                                 toast.success("Marked resolved");
                               }}
@@ -283,26 +332,22 @@ const Responder = () => {
                             </Button>
                           </>
                         )}
-                        {r.status === "claimed" && r.claimedBy !== orgId && (
+                        {r.status === "assigned" && r.claimedBy !== orgId && (
                           <span className="text-xs text-muted-foreground">
                             Claimed by another org
                           </span>
                         )}
                       </div>
 
-                      {/* ── FIX: logistics toggle is a proper sibling div INSIDE CardContent,
-                               AFTER the action-buttons div, NOT inside it ── */}
+                      {/* ── Logistics toggle ── */}
                       {canAssignLogistics && (
                         <div className="mt-3 border-t pt-3">
                           <button
                             className="text-[11px] text-muted-foreground underline hover:text-foreground"
-                            onClick={() =>
-                              setLogisticsOpen(isLogisticsOpen ? null : r.id)
-                            }
+                            onClick={() => setLogisticsOpen(isLogisticsOpen ? null : r.id)}
                           >
                             {isLogisticsOpen ? "Hide logistics ↑" : "Assign logistics ↓"}
                           </button>
-
                           {isLogisticsOpen && (
                             <div className="mt-3">
                               <LogisticsAssignmentForm
@@ -343,49 +388,29 @@ const Responder = () => {
                       <Label className="flex items-center gap-1.5">
                         <Truck className="h-3 w-3" /> Food stock (lbs)
                       </Label>
-                      <Input
-                        type="number"
-                        value={stockLbs}
-                        onChange={(e) => setStockLbs(Number(e.target.value))}
-                      />
+                      <Input type="number" value={stockLbs} onChange={(e) => setStockLbs(Number(e.target.value))} />
                     </div>
                     <div>
                       <Label className="flex items-center gap-1.5">
                         <DollarSign className="h-3 w-3" /> Voucher capacity (USD)
                       </Label>
-                      <Input
-                        type="number"
-                        value={vouchers}
-                        onChange={(e) => setVouchers(Number(e.target.value))}
-                      />
+                      <Input type="number" value={vouchers} onChange={(e) => setVouchers(Number(e.target.value))} />
                     </div>
                     <div>
                       <Label className="flex items-center gap-1.5">
                         <Truck className="h-3 w-3" /> Transport trucks
                       </Label>
-                      <Input
-                        type="number"
-                        value={trucks}
-                        onChange={(e) => setTrucks(Number(e.target.value))}
-                      />
+                      <Input type="number" value={trucks} onChange={(e) => setTrucks(Number(e.target.value))} />
                     </div>
                     <div className="flex items-center gap-3 pt-6">
-                      <Switch
-                        checked={coldChain}
-                        onCheckedChange={setColdChain}
-                        id="cc"
-                      />
+                      <Switch checked={coldChain} onCheckedChange={setColdChain} id="cc" />
                       <Label htmlFor="cc" className="flex items-center gap-1.5">
                         <Snowflake className="h-3 w-3" /> Cold chain capable
                       </Label>
                     </div>
                     <div className="sm:col-span-2">
                       <Label>Notes</Label>
-                      <Textarea
-                        rows={3}
-                        value={notes}
-                        onChange={(e) => setNotes(e.target.value)}
-                      />
+                      <Textarea rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
                     </div>
                     <div className="sm:col-span-2 flex items-center justify-between">
                       <div className="text-xs text-muted-foreground">
@@ -399,8 +424,6 @@ const Responder = () => {
                 )}
               </CardContent>
             </Card>
-
-            {/* Burn-rate forecast card appears below the capacity form */}
             {myOrg && <BurnRateCard org={myOrg} />}
           </TabsContent>
 
@@ -416,9 +439,7 @@ const Responder = () => {
               <Card>
                 <CardContent className="p-4">
                   <p className="text-xs uppercase text-muted-foreground">Resolved</p>
-                  <p className="mt-1 text-2xl font-bold text-risk-prepared">
-                    {myResolved.length}
-                  </p>
+                  <p className="mt-1 text-2xl font-bold text-risk-prepared">{myResolved.length}</p>
                 </CardContent>
               </Card>
               <Card>
@@ -434,9 +455,7 @@ const Responder = () => {
               <Card>
                 <CardContent className="p-4">
                   <p className="text-xs uppercase text-muted-foreground">Counties served</p>
-                  <p className="mt-1 text-2xl font-bold">
-                    {myOrg?.countiesCovered.length ?? 0}
-                  </p>
+                  <p className="mt-1 text-2xl font-bold">{myOrg?.countiesCovered.length ?? 0}</p>
                 </CardContent>
               </Card>
             </div>
@@ -452,32 +471,15 @@ const Responder = () => {
                   variant="outline"
                   onClick={() => {
                     const rows = [
-                      [
-                        "reference",
-                        "state",
-                        "county",
-                        "type",
-                        "urgency",
-                        "status",
-                        "createdAt",
-                        "resolutionNote",
-                      ],
+                      ["reference", "state", "county", "type", "urgency", "status", "createdAt", "resolutionNote"],
                       ...myClaimed.map((r) => [
-                        r.reference,
-                        r.stateAbbr,
-                        r.countyFips,
-                        r.type,
-                        r.urgency,
-                        r.status,
-                        r.createdAt,
-                        r.resolutionNote ?? "",
+                        r.reference, r.stateAbbr, r.countyFips, r.type,
+                        r.urgency, r.status, r.createdAt, r.resolutionNote ?? "",
                       ]),
                     ];
-                    const csv = rows
-                      .map((r) =>
-                        r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","),
-                      )
-                      .join("\n");
+                    const csv = rows.map((r) =>
+                      r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")
+                    ).join("\n");
                     const blob = new Blob([csv], { type: "text/csv" });
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");

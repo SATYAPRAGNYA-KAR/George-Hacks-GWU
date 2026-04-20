@@ -44,7 +44,7 @@ const Landing = () => {
               </Button>
             </div>
             <p className="mt-5 text-xs text-primary-foreground/70">
-              Iowa is the seeded pilot/demo state. Architecture supports all 50 U.S. states + counties.
+              Architecture supports all 50 U.S. states + counties.
             </p>
           </div>
         </div>

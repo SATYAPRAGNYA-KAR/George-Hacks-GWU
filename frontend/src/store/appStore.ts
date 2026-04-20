@@ -31,6 +31,7 @@ import {
 } from "@/data/baseline";
 import { clusterReports } from "@/lib/confidence";
 import { US_STATES, STATE_CENTROIDS } from "@/data/states";
+import { updateRequestStatus } from "@/lib/api";
 
 const now = () => new Date().toISOString();
 
@@ -153,9 +154,8 @@ interface AppState {
   escalateRequest: (id: string, note?: string) => void;
   closeRequest: (id: string, note?: string) => void;
 
-  // legacy claim/resolve (kept for backwards compat with some pages)
-  claimRequest: (id: string, orgId: string) => void;
-  resolveRequest: (id: string, note: string) => void;
+  claimRequest: (id: string, orgId: string) => Promise<void>;
+  resolveRequest: (id: string, note: string) => Promise<void>;
 
   // assignments + logistics
   assignments: RequestAssignment[];
@@ -426,20 +426,61 @@ export const useAppStore = create<AppState>()(
           appendAudit({ action: "request_closed", subjectType: "request", subjectId: id, summary: note ?? "Closed" });
         },
 
-        // legacy compat
-        claimRequest: (id, orgId) => {
+        // // legacy compat
+        // claimRequest: (id, orgId) => {
+        //   set({
+        //     requests: get().requests.map((r) =>
+        //       r.id === id ? { ...r, status: "accepted", claimedBy: orgId, updatedAt: now() } : r,
+        //     ),
+        //   });
+        // },
+        // resolveRequest: (id, note) => {
+        //   set({
+        //     requests: get().requests.map((r) =>
+        //       r.id === id ? { ...r, status: "closed", resolutionNote: note, updatedAt: now() } : r,
+        //     ),
+        //   });
+        // },
+        // AFTER
+        claimRequest: async (id, orgId) => {
+          // Optimistic local update first so UI feels instant
           set({
             requests: get().requests.map((r) =>
-              r.id === id ? { ...r, status: "accepted", claimedBy: orgId, updatedAt: now() } : r,
+              r.id === id ? { ...r, status: "assigned", claimedBy: orgId, updatedAt: now() } : r,
             ),
           });
+          // Sync to backend using the reference field (what the API needs)
+          const req = get().requests.find((r) => r.id === id);
+          if (req?.reference) {
+            try {
+              await updateRequestStatus(req.reference, {
+                status: "assigned",
+                note: `Claimed by ${orgId}`,
+                assigned_org: orgId,
+              });
+            } catch (e) {
+              console.warn("Backend sync failed for claimRequest:", e);
+            }
+          }
         },
-        resolveRequest: (id, note) => {
+        resolveRequest: async (id, note) => {
           set({
             requests: get().requests.map((r) =>
-              r.id === id ? { ...r, status: "closed", resolutionNote: note, updatedAt: now() } : r,
+              r.id === id ? { ...r, status: "resolved", resolutionNote: note, updatedAt: now() } : r,
             ),
           });
+          const req = get().requests.find((r) => r.id === id);
+          if (req?.reference) {
+            try {
+              await updateRequestStatus(req.reference, {
+                status: "resolved",
+                note,
+                resolution_note: note,
+              });
+            } catch (e) {
+              console.warn("Backend sync failed for resolveRequest:", e);
+            }
+          }
         },
 
         // assignments + logistics
